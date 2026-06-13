@@ -2,6 +2,7 @@ use hmac::{Hmac, Mac};
 use zeroize::Zeroize;
 
 use crate::Result;
+use crate::error::Error;
 use crate::types::{Ikm, MasterKey};
 
 const SALT: &[u8] = b"ykdf-v1";
@@ -24,7 +25,7 @@ macro_rules! hkdf_extract {
         #[must_use = "master key must not be discarded"]
         pub fn $name(ikm: &Ikm) -> Result<MasterKey> {
             let mut mac = <Hmac<$hash>>::new_from_slice(SALT)
-                .expect("HMAC accepts any key length");
+                .map_err(|_| Error::Hkdf(hkdf::InvalidLength))?;
             mac.update(ikm.as_bytes());
             let mut result = mac.finalize().into_bytes();
             let mut key = [0u8; 64];
