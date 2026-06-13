@@ -28,6 +28,8 @@ pub enum Error {
         expected: &'static str,
         got: &'static str,
     },
+    /// Requested output length is zero.
+    ZeroLengthOutput,
     /// Expand produced wrong number of bytes.
     ExpandLength { expected: usize, got: usize },
     /// Profile post-processing failed.

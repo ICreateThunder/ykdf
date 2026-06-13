@@ -39,10 +39,7 @@ pub fn derive_raw(master_key: &MasterKey, context: &Context, len: usize) -> Resu
         });
     }
     if len == 0 {
-        return Err(Error::ExpandOutputTooLong {
-            requested: 0,
-            max: 0,
-        });
+        return Err(Error::ZeroLengthOutput);
     }
     let expanded = crate::expand::expand(master_key, context, len)?;
     profile::raw::post_process(&expanded)
