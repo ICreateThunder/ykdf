@@ -1,0 +1,65 @@
+# Rust / Cargo
+target/
+*.rs.bk
+deny.lock
+perf.*
+flamegraph.svg
+
+# Environment and secrets
+.env*
+*.pem
+*.key
+*.crt
+*.p12
+*.gpg
+id_rsa*
+id_ed25519*
+!docs/security/*.asc
+!**/testdata/**/*.pem
+!**/fixtures/**/*.pem
+
+# Editors / IDEs
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/*
+*.sublime-*
+
+# OS
+.DS_Store
+Thumbs.db
+.directory
+
+# Testing
+coverage/
+.coverage*
+htmlcov/
+*.gcov
+*.log
+logs/
+
+# Temp
+*.tmp
+*.bak
+*.orig
+
+# Documentation build
+docs/_build/
+docs/.cache/
+site/
+
+# Project-specific
+/data/
+/.local/
+/scratch/
+
+# Android
+*.apk
+*.aab
+*.dex
+*.class
+local.properties
+.gradle/
+build/

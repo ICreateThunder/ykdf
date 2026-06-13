@@ -1,0 +1,6 @@
+[files]
+extend-exclude = ["target/", "*.lock"]
+
+[default.extend-words]
+
+[default.extend-identifiers]

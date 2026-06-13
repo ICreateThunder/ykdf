@@ -1,0 +1,65 @@
+name: Bug Report
+description: Report a bug
+title: "bug: "
+labels: [kind:bug, status:triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report security vulnerabilities here. Use [Security Advisories](../../security/advisories/new).
+        Redact any secrets or key material from logs.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: "0.1.0 or git commit hash"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Linux (x86_64)
+        - Linux (aarch64)
+        - Android
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      render: shell
+
+  - type: checkboxes
+    id: dco
+    attributes:
+      label: DCO
+      options:
+        - label: I agree to the [DCO](../../blob/main/CONTRIBUTING.md)
+          required: true

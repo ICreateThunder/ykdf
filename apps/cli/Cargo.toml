@@ -1,0 +1,19 @@
+[package]
+name = "ykdf"
+description = "YubiKey key derivation CLI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "ykdf"
+path = "src/main.rs"
+
+[dependencies]
+ykdf-core = { path = "../../crates/ykdf-core" }
+ykdf-yubikey = { path = "../../crates/ykdf-yubikey" }
