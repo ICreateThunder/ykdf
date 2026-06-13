@@ -10,10 +10,13 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = []
+argon2 = ["dep:argon2"]
+
 [dependencies]
-derive_more.workspace = true
+argon2 = { workspace = true, optional = true }
 zeroize.workspace = true
-hkdf.workspace = true
 hmac.workspace = true
 sha2.workspace = true
 sha3.workspace = true
