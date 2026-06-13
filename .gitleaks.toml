@@ -4,7 +4,10 @@ title = "ykdf gitleaks config"
 useDefault = true
 
 [allowlist]
+description = "Project-level path allowlist"
 paths = [
+  '''(?:^|/)target/''',
+  '''(?:^|/)\.gitleaksignore$''',
   '''docs/security/.*\.asc''',
   '''testdata/.*\.pem''',
   '''fixtures/.*\.pem''',
