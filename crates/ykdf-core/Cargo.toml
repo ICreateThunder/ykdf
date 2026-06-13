@@ -13,3 +13,10 @@ workspace = true
 [dependencies]
 derive_more.workspace = true
 zeroize.workspace = true
+hkdf.workspace = true
+sha2.workspace = true
+sha3.workspace = true
+x25519-dalek.workspace = true
+ed25519-dalek.workspace = true
+ml-kem.workspace = true
+bech32.workspace = true
