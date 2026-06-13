@@ -6,7 +6,8 @@ use crate::Result;
 use crate::error::Error;
 
 /// Default salt for passphrase stretching when no custom salt is provided.
-const DEFAULT_SALT: &[u8] = b"ykdf-v1-argon2";
+/// 16 bytes per RFC 9106 Section 3.1 minimum recommendation.
+const DEFAULT_SALT: &[u8] = b"ykdf-v1-argon2id";
 
 /// Argon2id parameters for passphrase stretching.
 ///
