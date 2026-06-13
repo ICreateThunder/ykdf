@@ -1,4 +1,6 @@
-use ykdf_core::{Context, Ikm, Pipeline, Profile, ProfileOutput, derive, extract};
+use ykdf_core::{
+    Context, Ikm, Pipeline, Profile, ProfileOutput, cascade, derive, derive_raw, extract,
+};
 
 /// Fixed test IKM simulating 32 bytes of ECDH output.
 fn test_ikm() -> Ikm {
@@ -215,5 +217,137 @@ fn raw_derive_produces_bytes() {
             assert_eq!(raw.0.len(), 32);
         }
         _ => panic!("expected Raw output"),
+    }
+}
+
+#[test]
+fn raw_derive_variable_length() {
+    let ikm = test_ikm();
+    let mk = extract(&ikm, Pipeline::HkdfSha512).unwrap();
+    let ctx = Context::new(Profile::Raw, "test", 0).unwrap();
+
+    for len in [16, 32, 48, 64, 128] {
+        let out = derive_raw(&mk, &ctx, len).unwrap();
+        match &out {
+            ProfileOutput::Raw(raw) => assert_eq!(raw.0.len(), len),
+            _ => panic!("expected Raw output"),
+        }
+    }
+}
+
+#[test]
+fn raw_derive_rejects_zero_length() {
+    let ikm = test_ikm();
+    let mk = extract(&ikm, Pipeline::HkdfSha512).unwrap();
+    let ctx = Context::new(Profile::Raw, "test", 0).unwrap();
+    assert!(derive_raw(&mk, &ctx, 0).is_err());
+}
+
+#[test]
+fn raw_derive_rejects_non_raw_profile() {
+    let ikm = test_ikm();
+    let mk = extract(&ikm, Pipeline::HkdfSha512).unwrap();
+    let ctx = Context::new(Profile::X25519, "test", 0).unwrap();
+    assert!(derive_raw(&mk, &ctx, 32).is_err());
+}
+
+#[test]
+fn raw_derive_default_still_32_bytes() {
+    let ikm = test_ikm();
+    let mk = extract(&ikm, Pipeline::HkdfSha512).unwrap();
+    let ctx = Context::new(Profile::Raw, "test", 0).unwrap();
+    let out = derive(&mk, &ctx).unwrap();
+    match &out {
+        ProfileOutput::Raw(raw) => assert_eq!(raw.0.len(), 32),
+        _ => panic!("expected Raw output"),
+    }
+}
+
+#[test]
+fn cascade_is_deterministic() {
+    let ikm = test_ikm();
+    let early = extract(&ikm, Pipeline::HkdfSha512).unwrap();
+    let additional = b"additional-entropy-source";
+
+    let mk1 = cascade(&early, additional, Pipeline::HkdfSha512).unwrap();
+    let mk2 = cascade(&early, additional, Pipeline::HkdfSha512).unwrap();
+    assert_eq!(mk1.as_bytes(), mk2.as_bytes());
+}
+
+#[test]
+fn cascade_differs_from_early_secret() {
+    let ikm = test_ikm();
+    let early = extract(&ikm, Pipeline::HkdfSha512).unwrap();
+    let additional = b"additional-entropy-source";
+
+    let cascaded = cascade(&early, additional, Pipeline::HkdfSha512).unwrap();
+    assert_ne!(early.as_bytes(), cascaded.as_bytes());
+}
+
+#[test]
+fn cascade_different_additional_ikm_differs() {
+    let ikm = test_ikm();
+    let early = extract(&ikm, Pipeline::HkdfSha512).unwrap();
+
+    let mk1 = cascade(&early, b"factor-a", Pipeline::HkdfSha512).unwrap();
+    let mk2 = cascade(&early, b"factor-b", Pipeline::HkdfSha512).unwrap();
+    assert_ne!(mk1.as_bytes(), mk2.as_bytes());
+}
+
+#[test]
+fn cascade_sponge_is_deterministic() {
+    let ikm = test_ikm();
+    let early = extract(&ikm, Pipeline::Shake256).unwrap();
+    let additional = b"passphrase-stretched";
+
+    let mk1 = cascade(&early, additional, Pipeline::Shake256).unwrap();
+    let mk2 = cascade(&early, additional, Pipeline::Shake256).unwrap();
+    assert_eq!(mk1.as_bytes(), mk2.as_bytes());
+}
+
+#[cfg(feature = "argon2")]
+mod argon2_tests {
+    use ykdf_core::{Argon2Params, stretch_passphrase};
+
+    #[test]
+    fn stretch_is_deterministic() {
+        let params = Argon2Params::default();
+        let out1 = stretch_passphrase(b"test-passphrase", &params).unwrap();
+        let out2 = stretch_passphrase(b"test-passphrase", &params).unwrap();
+        assert_eq!(out1.as_bytes(), out2.as_bytes());
+        assert_eq!(out1.as_bytes().len(), 64);
+    }
+
+    #[test]
+    fn different_passphrases_differ() {
+        let params = Argon2Params::default();
+        let out1 = stretch_passphrase(b"passphrase-a", &params).unwrap();
+        let out2 = stretch_passphrase(b"passphrase-b", &params).unwrap();
+        assert_ne!(out1.as_bytes(), out2.as_bytes());
+    }
+
+    #[test]
+    fn custom_salt_differs_from_default() {
+        let default_params = Argon2Params::default();
+        let custom_params = Argon2Params::default().with_salt(b"custom-salt-value".to_vec());
+        let out1 = stretch_passphrase(b"test", &default_params).unwrap();
+        let out2 = stretch_passphrase(b"test", &custom_params).unwrap();
+        assert_ne!(out1.as_bytes(), out2.as_bytes());
+    }
+
+    #[test]
+    fn full_cascade_with_argon2() {
+        use ykdf_core::{Context, Pipeline, Profile, ProfileOutput, cascade, derive, extract};
+
+        let ikm = super::test_ikm();
+        let early = extract(&ikm, Pipeline::HkdfSha512).unwrap();
+
+        let params = Argon2Params::default();
+        let stretched = stretch_passphrase(b"my-passphrase", &params).unwrap();
+
+        let master = cascade(&early, stretched.as_bytes(), Pipeline::HkdfSha512).unwrap();
+        let ctx = Context::new(Profile::X25519, "wg-home", 0).unwrap();
+        let out = derive(&master, &ctx).unwrap();
+        assert!(matches!(out, ProfileOutput::SecretKey(_)));
     }
 }

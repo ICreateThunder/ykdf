@@ -1,8 +1,6 @@
-use derive_more::From;
-
 pub type Result<T> = core::result::Result<T, Error>;
 
-#[derive(Debug, From)]
+#[derive(Debug)]
 pub enum Error {
     /// Context string is malformed or has wrong number of fields.
     InvalidContext { input: String },
@@ -21,9 +19,17 @@ pub enum Error {
         profile: &'static str,
         pipeline: &'static str,
     },
-    /// HKDF operation failed.
-    #[from]
-    Hkdf(hkdf::InvalidLength),
+    /// Requested expand output exceeds the maximum for the hash (255 * hash length).
+    ExpandOutputTooLong { requested: usize, max: usize },
+    /// PRK length does not match the hash output size.
+    InvalidPrkLength { len: usize, expected: usize },
+    /// Function requires a specific profile but a different one was provided.
+    ProfileMismatch {
+        expected: &'static str,
+        got: &'static str,
+    },
+    /// Requested output length is zero.
+    ZeroLengthOutput,
     /// Expand produced wrong number of bytes.
     ExpandLength { expected: usize, got: usize },
     /// Profile post-processing failed.
