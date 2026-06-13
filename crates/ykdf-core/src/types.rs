@@ -39,7 +39,7 @@ impl Ikm {
 ///
 /// HKDF-SHA512 produces a 64-byte PRK naturally.
 /// The sponge pipeline uses SHAKE256 squeezed to 64 bytes.
-#[derive(Clone, Zeroize, ZeroizeOnDrop)]
+#[derive(Zeroize, ZeroizeOnDrop)]
 pub struct MasterKey([u8; 64]);
 
 impl MasterKey {

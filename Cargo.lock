@@ -573,6 +573,7 @@ dependencies = [
  "derive_more",
  "ed25519-dalek",
  "hkdf",
+ "hmac",
  "ml-kem",
  "sha2",
  "sha3 0.10.9",

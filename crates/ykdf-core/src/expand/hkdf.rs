@@ -20,6 +20,11 @@ macro_rules! hkdf_expand {
             context: &Context,
             len: usize,
         ) -> Result<ExpandedBytes> {
+            // NOTE: Hkdf::from_prk stores an internal copy of the PRK that is
+            // not zeroized on drop. Acceptable here because the master key
+            // already exists in the caller's scope (no new secret created),
+            // but a future pass should replace this with direct HMAC iteration
+            // to eliminate the redundant copy entirely.
             let hk = Hkdf::<$hash>::from_prk(master_key.as_bytes())
                 .map_err(|_| Error::Hkdf(hkdf::InvalidLength))?;
             let info = context.kdf_info(len);

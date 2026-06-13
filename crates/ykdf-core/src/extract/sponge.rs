@@ -16,6 +16,8 @@ const SALT: &[u8] = b"ykdf-v1";
 #[must_use = "master key must not be discarded"]
 pub fn extract(ikm: &Ikm) -> Result<MasterKey> {
     let mut hasher = Shake256::default();
+    // Safe to concatenate without a length prefix: SALT is a fixed
+    // 7-byte constant, so the boundary with IKM is unambiguous.
     hasher.update(SALT);
     hasher.update(ikm.as_bytes());
 

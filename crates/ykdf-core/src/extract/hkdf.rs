@@ -1,4 +1,4 @@
-use hkdf::Hkdf;
+use hmac::{Hmac, Mac};
 use zeroize::Zeroize;
 
 use crate::Result;
@@ -7,6 +7,10 @@ use crate::types::{Ikm, MasterKey};
 const SALT: &[u8] = b"ykdf-v1";
 
 /// Generate an HKDF-Extract function for a 64-byte-output hash.
+///
+/// Uses HMAC directly (`HMAC-<Hash>(salt, IKM)`) rather than the `hkdf`
+/// crate's `extract()`, which returns an `Hkdf` instance that retains an
+/// un-zeroizable copy of the PRK internally.
 ///
 /// The hash must produce 64 bytes so the PRK fills `MasterKey` exactly
 /// (satisfied by SHA-512 and SHA3-512). Adding a new hash is one line.
@@ -19,11 +23,13 @@ macro_rules! hkdf_extract {
         /// This function is infallible but returns `Result` for API consistency.
         #[must_use = "master key must not be discarded"]
         pub fn $name(ikm: &Ikm) -> Result<MasterKey> {
-            let (mut prk, _hk) = Hkdf::<$hash>::extract(Some(SALT), ikm.as_bytes());
-
+            let mut mac = <Hmac<$hash>>::new_from_slice(SALT)
+                .expect("HMAC accepts any key length");
+            mac.update(ikm.as_bytes());
+            let mut result = mac.finalize().into_bytes();
             let mut key = [0u8; 64];
-            key.copy_from_slice(&prk);
-            prk.as_mut_slice().zeroize();
+            key.copy_from_slice(&result);
+            result.as_mut_slice().zeroize();
             Ok(MasterKey::from_bytes(key))
         }
     };
