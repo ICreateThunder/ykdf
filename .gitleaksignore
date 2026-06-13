@@ -1,0 +1,2 @@
+# deny.toml — cargo-deny's `db-path = "~/.cargo/advisory-db"`.
+deny.toml:personal-tilde-dotfile-path:13

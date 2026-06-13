@@ -15,5 +15,5 @@ name = "ykdf"
 path = "src/main.rs"
 
 [dependencies]
-ykdf-core = { path = "../../crates/ykdf-core" }
-ykdf-yubikey = { path = "../../crates/ykdf-yubikey" }
+ykdf-core = { path = "../../crates/ykdf-core", version = "0.1.0" }
+ykdf-yubikey = { path = "../../crates/ykdf-yubikey", version = "0.1.0" }
