@@ -236,6 +236,14 @@ fn raw_derive_variable_length() {
 }
 
 #[test]
+fn raw_derive_rejects_zero_length() {
+    let ikm = test_ikm();
+    let mk = extract(&ikm, Pipeline::HkdfSha512).unwrap();
+    let ctx = Context::new(Profile::Raw, "test", 0).unwrap();
+    assert!(derive_raw(&mk, &ctx, 0).is_err());
+}
+
+#[test]
 fn raw_derive_rejects_non_raw_profile() {
     let ikm = test_ikm();
     let mk = extract(&ikm, Pipeline::HkdfSha512).unwrap();
