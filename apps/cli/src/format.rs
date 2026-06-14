@@ -1,6 +1,7 @@
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use ykdf_core::{Profile, ProfileOutput};
+use zeroize::Zeroize;
 
 use crate::cli::OutputFormat;
 use crate::error::CliError;
@@ -199,8 +200,14 @@ fn format_openssh_ed25519(seed: &[u8; 32]) -> String {
     // private key section (length-prefixed)
     write_openssh_string(&mut blob, &priv_section);
 
-    // PEM encode
-    let b64 = BASE64.encode(&blob);
+    // Zeroize secret intermediates before they go out of scope.
+    privkey_bytes.zeroize();
+    priv_section.zeroize();
+
+    // PEM encode then zeroize the binary blob.
+    let mut b64 = BASE64.encode(&blob);
+    blob.zeroize();
+
     let mut pem = String::from("-----BEGIN OPENSSH PRIVATE KEY-----\n");
     for chunk in b64.as_bytes().chunks(70) {
         // base64 output is always valid ASCII/UTF-8.
@@ -209,6 +216,7 @@ fn format_openssh_ed25519(seed: &[u8; 32]) -> String {
     }
     pem.push_str("-----END OPENSSH PRIVATE KEY-----");
 
+    b64.zeroize();
     pem
 }
 

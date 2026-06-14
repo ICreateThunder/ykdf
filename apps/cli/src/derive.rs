@@ -40,7 +40,11 @@ pub fn run_derive(args: DeriveArgs) -> Result<(), CliError> {
         derive(&master_key, &context)?
     };
 
-    let formatted = format::format_output(&output, profile, args.format.as_ref())?;
+    let formatted = Zeroizing::new(format::format_output(
+        &output,
+        profile,
+        args.format.as_ref(),
+    )?);
     std::io::stdout()
         .write_all(&formatted)
         .map_err(CliError::OutputWrite)
@@ -64,7 +68,7 @@ pub fn run_pubkey(args: PubkeyArgs) -> Result<(), CliError> {
     }
 
     let output = derive(&master_key, &context)?;
-    let formatted = format::format_pubkey(&output, profile)?;
+    let formatted = Zeroizing::new(format::format_pubkey(&output, profile)?);
     std::io::stdout()
         .write_all(&formatted)
         .map_err(CliError::OutputWrite)
