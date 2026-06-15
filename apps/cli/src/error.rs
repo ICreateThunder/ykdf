@@ -8,10 +8,6 @@ pub enum CliError {
         path: PathBuf,
         source: std::io::Error,
     },
-    /// No IKM source available.
-    NoIkmSource,
-    /// --layered requires a `YubiKey` (not supported in this build).
-    LayeredNotSupported,
     /// Output format is not valid for this profile.
     InvalidFormat {
         profile: &'static str,
@@ -27,6 +23,8 @@ pub enum CliError {
     LengthRequiresRaw,
     /// --length is required with --profile raw and `derive_raw`.
     RawRequiresLength,
+    /// `YubiKey` operation failed.
+    YubiKey(ykdf_yubikey::Error),
 }
 
 impl CliError {
@@ -54,14 +52,6 @@ impl std::fmt::Display for CliError {
             Self::IkmRead { path, source } => {
                 write!(f, "failed to read IKM from {}: {source}", path.display())
             }
-            Self::NoIkmSource => write!(
-                f,
-                "no IKM source specified\n\n\
-                 Use --ikm-file <path> for testing, or connect a YubiKey (not yet supported)."
-            ),
-            Self::LayeredNotSupported => {
-                write!(f, "--layered requires a YubiKey (not yet supported)")
-            }
             Self::InvalidFormat { profile, format } => {
                 write!(f, "{format} format is not valid for the {profile} profile")
             }
@@ -72,6 +62,7 @@ impl std::fmt::Display for CliError {
             Self::OutputWrite(e) => write!(f, "failed to write output: {e}"),
             Self::LengthRequiresRaw => write!(f, "--length is only valid with --profile raw"),
             Self::RawRequiresLength => write!(f, "--length is required with --profile raw"),
+            Self::YubiKey(e) => write!(f, "{e}"),
         }
     }
 }

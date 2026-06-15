@@ -17,9 +17,6 @@ pub fn run_derive(args: DeriveArgs) -> Result<(), CliError> {
         .pipeline
         .map_or_else(|| profile.default_pipeline(), Into::into);
 
-    if args.layered {
-        return Err(CliError::LayeredNotSupported);
-    }
     if args.length.is_some() && profile != Profile::Raw {
         return Err(CliError::LengthRequiresRaw);
     }
@@ -28,7 +25,7 @@ pub fn run_derive(args: DeriveArgs) -> Result<(), CliError> {
     }
 
     let context = build_context(profile, pipeline, &args.purpose, args.index)?;
-    let mut master_key = extract_ikm(args.ikm_file.as_ref(), pipeline)?;
+    let mut master_key = extract_ikm(args.ikm_file.as_ref(), args.layered, pipeline)?;
 
     if args.passphrase {
         master_key = apply_passphrase(&master_key, pipeline)?;
@@ -56,12 +53,8 @@ pub fn run_pubkey(args: PubkeyArgs) -> Result<(), CliError> {
         .pipeline
         .map_or_else(|| profile.default_pipeline(), Into::into);
 
-    if args.layered {
-        return Err(CliError::LayeredNotSupported);
-    }
-
     let context = build_context(profile, pipeline, &args.purpose, args.index)?;
-    let mut master_key = extract_ikm(args.ikm_file.as_ref(), pipeline)?;
+    let mut master_key = extract_ikm(args.ikm_file.as_ref(), args.layered, pipeline)?;
 
     if args.passphrase {
         master_key = apply_passphrase(&master_key, pipeline)?;
@@ -85,11 +78,13 @@ fn build_context(
 
 fn extract_ikm(
     ikm_file: Option<&std::path::PathBuf>,
+    layered: bool,
     pipeline: Pipeline,
 ) -> Result<ykdf_core::MasterKey, CliError> {
-    let source = ikm_file
-        .map(|p| IkmSource::File(p.clone()))
-        .ok_or(CliError::NoIkmSource)?;
+    let source = match ikm_file {
+        Some(p) => IkmSource::File(p.clone()),
+        None => IkmSource::YubiKey { layered },
+    };
     let ikm = source.load()?;
     extract(&ikm, pipeline).map_err(CliError::Core)
 }

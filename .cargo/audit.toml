@@ -1,0 +1,4 @@
+[advisories]
+# RUSTSEC-2023-0071: Marvin Attack on RSA (rsa crate). Transitive via
+# yubikey 0.8 -> rsa 0.9. We only use P-256 ECDH, never RSA operations.
+ignore = ["RUSTSEC-2023-0071"]
