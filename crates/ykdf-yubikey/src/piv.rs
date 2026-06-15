@@ -43,7 +43,8 @@ pub fn read_public_key(yubikey: &mut YubiKey) -> crate::Result<Vec<u8>> {
 ///
 /// # Errors
 ///
-/// Returns `Error::EcdhFailed` if the ECDH operation fails.
+/// Returns `Error::EcdhFailed` if the ECDH operation fails or the
+/// result is not exactly 32 bytes.
 pub fn ecdh(yubikey: &mut YubiKey, peer_point: &[u8]) -> crate::Result<Zeroizing<Vec<u8>>> {
     let result = piv::decrypt_data(
         yubikey,
@@ -54,6 +55,15 @@ pub fn ecdh(yubikey: &mut YubiKey, peer_point: &[u8]) -> crate::Result<Zeroizing
     .map_err(|e| Error::EcdhFailed {
         detail: e.to_string(),
     })?;
+
+    if result.len() != 32 {
+        return Err(Error::EcdhFailed {
+            detail: format!(
+                "unexpected ECDH output length: {} (expected 32)",
+                result.len()
+            ),
+        });
+    }
 
     Ok(Zeroizing::new(result.to_vec()))
 }

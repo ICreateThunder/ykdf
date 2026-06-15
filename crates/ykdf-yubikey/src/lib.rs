@@ -4,8 +4,6 @@ pub mod piv;
 
 pub use self::error::{Error, Result};
 
-use zeroize::Zeroizing;
-
 /// IKM derivation mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IkmMode {
@@ -46,7 +44,8 @@ pub fn derive_ikm(mode: IkmMode, pin: &[u8]) -> Result<ykdf_core::Ikm> {
     // Drop the PC/SC connection before opening USB HID for HMAC.
     drop(yubikey);
 
-    let mut ikm = Zeroizing::new(ecdh_secret.to_vec());
+    // Move the ECDH secret directly (no extra copy).
+    let mut ikm = ecdh_secret;
 
     if mode == IkmMode::Layered {
         eprintln!("Touch your YubiKey again for HMAC...");
@@ -54,7 +53,9 @@ pub fn derive_ikm(mode: IkmMode, pin: &[u8]) -> Result<ykdf_core::Ikm> {
         ikm.extend_from_slice(&hmac_response);
     }
 
-    ykdf_core::Ikm::new(ikm.to_vec()).map_err(|e| Error::EcdhFailed {
+    // Move the inner Vec out of Zeroizing to pass to Ikm::new.
+    let inner = std::mem::take(&mut *ikm);
+    ykdf_core::Ikm::new(inner).map_err(|e| Error::EcdhFailed {
         detail: e.to_string(),
     })
 }
