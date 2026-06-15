@@ -5,7 +5,7 @@
 
 A minimal, extensible framework for deterministically deriving cryptographic keys from a hardware root of trust (YubiKey 5 series). Supports WireGuard, Ed25519, ML-KEM (post-quantum), age identities, and arbitrary future key types.
 
-**Status:** Core library implemented (YubiKey transport and CLI in progress)
+**Status:** Core library, YubiKey transport, and Linux CLI implemented
 
 ## Problem
 
@@ -169,10 +169,19 @@ ykdf/
 │   │       │   └── raw.rs
 │   │       └── derive.rs       # extract() + derive() orchestration
 │   │
-│   └── ykdf-yubikey/           # YubiKey interaction layer (PIV ECDH, OTP HMAC)
+│   └── ykdf-yubikey/           # YubiKey interaction layer
+│       └── src/
+│           ├── piv.rs          # PIV ECDH (slot 9d, self-ECDH via cert)
+│           ├── hmac.rs         # HMAC-SHA1 challenge-response (OTP slot 2)
+│           └── lib.rs          # derive_ikm() orchestration
 │
 └── apps/
     └── cli/                    # Linux command-line tool (ykdf)
+        └── src/
+            ├── cli.rs          # clap subcommands and argument types
+            ├── derive.rs       # derive/pubkey orchestration
+            ├── format.rs       # output formatting (base64, hex, OpenSSH, age)
+            └── ikm.rs          # IKM source (YubiKey or --ikm-file)
 ```
 
 ### CLI Usage
@@ -210,9 +219,33 @@ ykdf derive --profile ed25519 --purpose high-value --passphrase
 ykdf pubkey --profile x25519 --purpose wg-home
 ```
 
-## Backup & Setup
+## How PIV ECDH Works
 
-Both YubiKeys are programmed with identical secrets at setup time:
+YKDF uses a self-ECDH approach: it reads the P-256 public key from the
+certificate in PIV slot 9d and sends it back to the YubiKey as the ECDH
+peer point. The YubiKey computes `ECDH(private_key, own_public_key)` and
+returns a deterministic 32-byte shared secret. No config file or external
+peer point storage is needed.
+
+## Setup
+
+### Single YubiKey (on-device generation)
+
+```bash
+# Generate P-256 key on-device (private key never leaves the YubiKey)
+ykman piv keys generate --algorithm ECCP256 --touch-policy ALWAYS 9d /tmp/ykdf-pub.pem
+
+# Create a self-signed certificate from the public key
+ykman piv certificates generate --subject "CN=ykdf" 9d /tmp/ykdf-pub.pem
+
+# Clean up (public key is now stored in the certificate on the YubiKey)
+rm /tmp/ykdf-pub.pem
+```
+
+### Backup (two YubiKeys with identical secrets)
+
+To use two YubiKeys as interchangeable backups, generate the key externally
+and import to both:
 
 ```bash
 # Generate and import P-256 key to both YubiKeys (PIV slot 9d)
@@ -225,7 +258,7 @@ ykman -d <serial_1> piv certificates import 9d /tmp/piv-cert.pem
 ykman -d <serial_2> piv keys import --touch-policy always 9d /tmp/piv.pem
 ykman -d <serial_2> piv certificates import 9d /tmp/piv-cert.pem
 
-# Program identical HMAC secret to both (OTP slot 2)
+# Program identical HMAC secret to both (OTP slot 2, for --layered mode)
 HMAC_SECRET=$(openssl rand -hex 20)
 ykman -d <serial_1> otp chalresp --touch 2 "$HMAC_SECRET"
 ykman -d <serial_2> otp chalresp --touch 2 "$HMAC_SECRET"
@@ -251,7 +284,7 @@ After setup, both YubiKeys produce identical derivations. Lose one, the other is
 ## Open Design Questions
 
 - **Manifest file:** Fully stateless (context strings documented externally) vs. a local manifest listing derived keys for usability
-- **Peer public key management:** How/where to store the fixed P-256 point used for PIV ECDH derivation
+- **HMAC challenge strategy:** Fixed challenge (`b"ykdf-v1"`) vs. context-as-challenge for hardware-level domain separation (limited to 64 bytes by YubiKey HMAC-SHA1)
 
 ## Comparison with Existing Tools
 

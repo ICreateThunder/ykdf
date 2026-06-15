@@ -1,9 +1,12 @@
 use std::path::PathBuf;
 
+use zeroize::Zeroizing;
+
 use crate::error::CliError;
 
 pub enum IkmSource {
     File(PathBuf),
+    YubiKey { layered: bool },
 }
 
 impl IkmSource {
@@ -15,6 +18,19 @@ impl IkmSource {
                     source: e,
                 })?;
                 ykdf_core::Ikm::new(bytes).map_err(CliError::Core)
+            }
+            Self::YubiKey { layered } => {
+                let mode = if *layered {
+                    ykdf_yubikey::IkmMode::Layered
+                } else {
+                    ykdf_yubikey::IkmMode::Standard
+                };
+
+                let pin = Zeroizing::new(
+                    rpassword::prompt_password("PIV PIN: ").map_err(CliError::PassphraseRead)?,
+                );
+
+                ykdf_yubikey::derive_ikm(mode, pin.as_bytes()).map_err(CliError::YubiKey)
             }
         }
     }

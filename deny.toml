@@ -13,7 +13,9 @@ feature-depth = 1
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "deny"
-ignore = []
+# RUSTSEC-2023-0071: Marvin Attack on RSA (rsa crate). Transitive via
+# yubikey 0.8 -> rsa 0.9. We only use P-256 ECDH, never RSA operations.
+ignore = ["RUSTSEC-2023-0071"]
 
 # Licenses
 # YKDF ships under GPL-3.0-only. The allow list is trimmed to licences
@@ -23,6 +25,7 @@ ignore = []
 confidence-threshold = 0.93
 allow = [
     "Apache-2.0",
+    "BSD-2-Clause",
     "BSD-3-Clause",
     "MIT",
     "Unicode-3.0",
@@ -34,16 +37,17 @@ allow = [
 multiple-versions = "deny"
 wildcards = "deny"
 deny = []
-# Transitional duplicates from the RustCrypto digest 0.10 -> 0.11 split:
-# ml-kem 0.3 rides the digest 0.11 stack while the dalek crates and our
-# direct sha2/sha3/hkdf deps ride 0.10. Outside our control until dalek
-# migrates. Skipped explicitly so any NEW unexpected duplicate still fails.
+# Transitional duplicates from the RustCrypto digest 0.10 -> 0.11 split
+# and yubikey/yubikey-hmac-otp transitive dependencies. Skipped explicitly
+# so any NEW unexpected duplicate still fails.
 skip = [
     { crate = "block-buffer" },
     { crate = "cpufeatures" },
     { crate = "crypto-common" },
     { crate = "digest" },
+    { crate = "getrandom" },
     { crate = "keccak" },
+    { crate = "quote" },
     { crate = "rand_core" },
     { crate = "sha3" },
 ]
