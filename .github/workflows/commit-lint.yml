@@ -1,0 +1,39 @@
+name: Commit Lint
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate PR title follows Conventional Commits
+        # The PR title becomes the squash-merge commit subject on main, so it
+        # is the enforcement point for the Conventional Commits convention
+        # documented in CONTRIBUTING.md. The title is passed via the
+        # environment (never interpolated into the script) to avoid shell
+        # injection from untrusted PR input.
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          types='feat|fix|chore|docs|refactor|test|ci|build|perf|security|style|revert'
+          pattern="^(${types})(\([a-z0-9-]+\))?!?: .+"
+
+          if printf '%s' "$PR_TITLE" | grep -qE "$pattern"; then
+            echo "PR title OK: $PR_TITLE"
+            exit 0
+          fi
+
+          echo "::error::PR title does not follow Conventional Commits 1.0"
+          {
+            echo "Got:      $PR_TITLE"
+            echo "Expected: <type>(<scope>): <summary>   (scope optional, '!' for breaking)"
+            echo "Types:    ${types//|/, }"
+            echo "Examples: feat(core): add X   |   fix(ci): correct Y   |   chore!: drop Z"
+          } >&2
+          exit 1
