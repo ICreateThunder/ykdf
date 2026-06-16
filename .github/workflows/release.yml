@@ -5,8 +5,7 @@ on:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+*'
 
-permissions:
-  contents: write
+permissions: {}
 
 concurrency:
   group: release-${{ github.ref }}
@@ -14,6 +13,8 @@ concurrency:
 
 jobs:
   build:
+    permissions:
+      contents: read
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -26,7 +27,9 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libpcsclite-dev libusb-1.0-0-dev
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           key: release-${{ matrix.target }}
@@ -51,6 +54,8 @@ jobs:
           retention-days: 1
 
   release:
+    permissions:
+      contents: write
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
