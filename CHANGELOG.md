@@ -18,7 +18,7 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 - `ykdf-core`: key profiles for x25519, ed25519, age-x25519, symmetric, ml-kem-512/768/1024, and raw, with per-profile pipeline acceptance policy
 - `ykdf-core`: zeroizing key-material types and fallible IKM construction with a minimum-entropy guard
 - `ykdf-core`: cascaded extract (TLS 1.3 pattern) for multi-factor entropy combining hardware and passphrase
-- `ykdf-core`: Argon2id passphrase stretching behind `argon2` feature flag with stateless fixed-salt default
+- `ykdf-core`: Argon2id passphrase stretching behind `argon2` feature flag, tuned for offline derivation (m=128 MiB, t=3, p=1) with stateless fixed-salt default
 - `ykdf-core`: `derive_raw()` for variable-length raw output
 - `ykdf-core`: direct HMAC-based expand (RFC 5869 S2.3), dropping the `hkdf` crate dependency
 - `ykdf-core`: sponge domain separation tags (0x01 extract, 0x02 cascade)
