@@ -5,19 +5,32 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 use crate::Result;
 use crate::error::Error;
 
-/// Default salt for passphrase stretching when no custom salt is provided.
-/// 16 bytes per RFC 9106 Section 3.1 minimum recommendation.
+/// Fixed default salt for passphrase stretching when no custom salt is given.
+///
+/// A fixed salt is required by YKDF's stateless, deterministic design: the
+/// same passphrase must stretch to the same value on every device with no
+/// stored per-user salt. This is safe because the stretched passphrase is
+/// never used in isolation. It is cascaded on top of the high-entropy
+/// `YubiKey` secret, so a precomputed passphrase table is useless to an
+/// attacker who lacks the hardware output. Callers wanting an extra personal
+/// factor can supply their own salt via [`Argon2Params::with_salt`].
+///
+/// 16 bytes, per RFC 9106 Section 3.1 minimum.
 const DEFAULT_SALT: &[u8] = b"ykdf-v1-argon2id";
 
 /// Argon2id parameters for passphrase stretching.
 ///
-/// Defaults follow the OWASP minimum recommendation:
-/// Argon2id, m=19456 KiB (19 MiB), t=2, p=1.
+/// Defaults are tuned for offline root-key derivation, not interactive login:
+/// m=131072 KiB (128 MiB), t=3, p=1. The memory cost is deliberately capped so
+/// the same passphrase stretches identically across every supported target,
+/// including memory-constrained WASM and mobile environments; raising it
+/// further would break cross-platform determinism. These parameters are part
+/// of the derivation: changing them changes every derived key.
 #[derive(Clone)]
 pub struct Argon2Params {
-    /// Memory cost in KiB (default: 19456 = 19 MiB).
+    /// Memory cost in KiB (default: 131072 = 128 MiB).
     pub m_cost: u32,
-    /// Time cost / iterations (default: 2).
+    /// Time cost / iterations (default: 3).
     pub t_cost: u32,
     /// Parallelism (default: 1).
     pub p_cost: u32,
@@ -27,8 +40,8 @@ pub struct Argon2Params {
 impl Default for Argon2Params {
     fn default() -> Self {
         Self {
-            m_cost: 19_456,
-            t_cost: 2,
+            m_cost: 131_072,
+            t_cost: 3,
             p_cost: 1,
             salt: None,
         }
