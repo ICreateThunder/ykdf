@@ -31,6 +31,8 @@ pub enum CliError {
     InvalidHmacSecret,
     /// --mgmt-key is not 48 hex characters (24 bytes).
     InvalidMgmtKey,
+    /// --import is not 64 hex characters (32 bytes).
+    InvalidImportKey,
 }
 
 impl CliError {
@@ -41,7 +43,8 @@ impl CliError {
             | Self::LengthRequiresRaw
             | Self::RawRequiresLength
             | Self::InvalidHmacSecret
-            | Self::InvalidMgmtKey => 2,
+            | Self::InvalidMgmtKey
+            | Self::InvalidImportKey => 2,
             _ => 1,
         }
     }
@@ -82,6 +85,9 @@ impl std::fmt::Display for CliError {
             }
             Self::InvalidMgmtKey => {
                 write!(f, "--mgmt-key must be 48 hex characters (24 bytes)")
+            }
+            Self::InvalidImportKey => {
+                write!(f, "--import must be 64 hex characters (32 bytes)")
             }
         }
     }

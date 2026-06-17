@@ -20,6 +20,8 @@ pub enum Error {
     MgmtAuthFailed,
     /// PIV provisioning (key generation or certificate write) failed.
     ProvisionFailed { detail: String },
+    /// A supplied private scalar is not a valid P-256 key.
+    InvalidScalar { detail: String },
     /// Programming the HMAC-SHA1 secret onto OTP slot 2 failed.
     HmacProgramFailed { detail: String },
     /// `YubiKey` PIV operation error.
@@ -47,6 +49,7 @@ impl core::fmt::Display for Error {
                 "PIV management key authentication failed (key is not the default; pass --mgmt-key)"
             ),
             Self::ProvisionFailed { detail } => write!(f, "PIV provisioning failed: {detail}"),
+            Self::InvalidScalar { detail } => write!(f, "invalid P-256 private key: {detail}"),
             Self::HmacProgramFailed { detail } => {
                 write!(f, "programming HMAC slot 2 failed: {detail}")
             }

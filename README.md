@@ -266,8 +266,25 @@ rm /tmp/ykdf-pub.pem
 
 ### Backup (two YubiKeys with identical secrets)
 
-To use two YubiKeys as interchangeable backups, generate the key externally
-and import to both:
+To use two YubiKeys as interchangeable backups, the same key must live on both.
+On-device generation cannot be backed up (the key is non-extractable), so
+generate the key on the host and import it into each device.
+
+```bash
+# Device 1: generate an EXPORTABLE key and program HMAC slot 2. The slot 9d
+# private key (and the generated HMAC secret) are printed once to stderr.
+ykdf init --exportable --layered
+# -> "slot 9d private key (hex): <SCALAR>"
+# -> "Generated HMAC secret ...: <HMAC>"
+
+# Device 2 (swap YubiKeys): import the SAME key and HMAC secret.
+ykdf init --import <SCALAR> --layered --hmac-secret <HMAC>
+```
+
+Both YubiKeys now produce identical derivations. Save `<SCALAR>` securely: it is
+the only copy of the private key and cannot be recovered from the device.
+
+Equivalent manual steps with `ykman` / `openssl`:
 
 ```bash
 # Generate and import P-256 key to both YubiKeys (PIV slot 9d)

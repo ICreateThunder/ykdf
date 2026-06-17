@@ -9,8 +9,11 @@
 use std::str::FromStr;
 use std::time::Duration;
 
+use p256::SecretKey;
+use rand_core::OsRng;
 use x509_cert::name::Name;
 use x509_cert::serial_number::SerialNumber;
+use x509_cert::spki::SubjectPublicKeyInfoOwned;
 use x509_cert::time::Validity;
 use yubikey::YubiKey;
 use yubikey::certificate::Certificate;
@@ -104,6 +107,83 @@ pub fn provision_piv(
         detail: e.to_string(),
     })?;
 
+    write_carrier_cert(yubikey, public)?;
+    crate::piv::read_public_key(yubikey)
+}
+
+/// Generate a P-256 private scalar using the OS CSPRNG.
+///
+/// `OsRng` draws from the operating system's cryptographically secure RNG (the
+/// `getrandom(2)` syscall on Linux, i.e. the same kernel CSPRNG as
+/// `/dev/urandom`). `SecretKey::random` samples uniformly from the scalar
+/// field. The returned bytes are the raw 32-byte big-endian scalar.
+#[must_use]
+pub fn generate_p256_scalar() -> Zeroizing<[u8; 32]> {
+    let secret = SecretKey::random(&mut OsRng);
+    let mut scalar = Zeroizing::new([0u8; 32]);
+    scalar.copy_from_slice(secret.to_bytes().as_slice());
+    scalar
+}
+
+/// Import an externally generated P-256 scalar into slot 9d and write the
+/// carrier certificate for its derived public key.
+///
+/// Unlike [`provision_piv`], the private key is supplied by the host, so it can
+/// be imported into more than one device for backup. Returns the public key in
+/// uncompressed SEC1 form (65 bytes).
+///
+/// # Errors
+///
+/// Returns `Error::InvalidScalar` if the scalar is not a valid P-256 key,
+/// `Error::WrongPin`/`Error::PinLocked` on PIN failure, `Error::MgmtAuthFailed`
+/// if management key authentication fails, or `Error::ProvisionFailed` if the
+/// import or certificate write fails.
+pub fn provision_piv_import(
+    yubikey: &mut YubiKey,
+    pin: &[u8],
+    mgmt: MgmKey,
+    policy: PivPolicy,
+    scalar: &[u8; 32],
+) -> crate::Result<Vec<u8>> {
+    // Validate the scalar and derive its public key on the host before touching
+    // the device, so bad input fails early.
+    let secret = SecretKey::from_slice(scalar).map_err(|e| Error::InvalidScalar {
+        detail: e.to_string(),
+    })?;
+    let spki = SubjectPublicKeyInfoOwned::from_key(secret.public_key()).map_err(|e| {
+        Error::ProvisionFailed {
+            detail: e.to_string(),
+        }
+    })?;
+
+    crate::piv::verify_pin(yubikey, pin)?;
+    yubikey
+        .authenticate(mgmt)
+        .map_err(|_| Error::MgmtAuthFailed)?;
+
+    // NOTE: import_ecc_key takes (.., touch_policy, pin_policy) -- the REVERSE
+    // of piv::generate's (pin_policy, touch_policy) argument order.
+    piv::import_ecc_key(
+        yubikey,
+        SlotId::KeyManagement,
+        AlgorithmId::EccP256,
+        scalar,
+        policy.touch_policy,
+        policy.pin_policy,
+    )
+    .map_err(|e| Error::ProvisionFailed {
+        detail: e.to_string(),
+    })?;
+
+    write_carrier_cert(yubikey, spki)?;
+    crate::piv::read_public_key(yubikey)
+}
+
+/// Build and write the slot 9d carrier certificate for `spki`.
+///
+/// The certificate carries the public key the derive path reads back; it is
+/// self-signed by the slot key, which may require a touch.
+fn write_carrier_cert(yubikey: &mut YubiKey, spki: SubjectPublicKeyInfoOwned) -> crate::Result<()> {
     // 19 bytes keeps the serial positive (a high MSB would be read as a sign).
     let mut serial_bytes = [0u8; 19];
     getrandom::getrandom(&mut serial_bytes).map_err(|e| Error::ProvisionFailed {
@@ -121,21 +201,19 @@ pub fn provision_piv(
         detail: e.to_string(),
     })?;
 
-    // Signing the certificate uses the slot key, so this may require a touch.
     Certificate::generate_self_signed::<_, p256::NistP256>(
         yubikey,
         SlotId::KeyManagement,
         serial,
         validity,
         subject,
-        public,
+        spki,
         |_builder| Ok(()),
     )
     .map_err(|e| Error::ProvisionFailed {
         detail: e.to_string(),
     })?;
-
-    crate::piv::read_public_key(yubikey)
+    Ok(())
 }
 
 /// Generate a random HMAC-SHA1 secret.
@@ -185,4 +263,24 @@ pub fn program_hmac_slot2(
         .map_err(|e| Error::HmacProgramFailed {
             detail: e.to_string(),
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::generate_p256_scalar;
+
+    #[test]
+    fn generated_scalar_is_a_valid_p256_key() {
+        let scalar = generate_p256_scalar();
+        assert_eq!(scalar.len(), 32);
+        // The bytes must round-trip into a valid (non-zero, in-range) key.
+        assert!(p256::SecretKey::from_slice(&scalar[..]).is_ok());
+    }
+
+    #[test]
+    fn generated_scalars_differ() {
+        let a = generate_p256_scalar();
+        let b = generate_p256_scalar();
+        assert_ne!(&a[..], &b[..], "two random scalars must not collide");
+    }
 }

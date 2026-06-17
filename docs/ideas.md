@@ -4,32 +4,13 @@ A log of design ideas that are out of scope for current work but worth keeping.
 Nothing here is committed to a roadmap; these are thought experiments and
 candidate features.
 
-## Exportable / importable slot 9d key (near-term follow-up)
+## Exportable / importable slot 9d key (IMPLEMENTED)
 
-On-device PIV generation (`ykdf init`, default) is non-extractable: the slot 9d
-key never leaves the YubiKey, so it cannot be backed up. Losing the device loses
-every key derived from the PIV factor.
-
-An opt-in exportable mode would trade some hardware strength for a real backup:
-
-- `ykdf init --exportable`: generate a P-256 key in host memory, import it into
-  slot 9d via `piv::import_ecc_key` (already feasible; `untested` feature is
-  enabled), write the carrier certificate as usual, and surface the 32-byte
-  scalar once so it can be backed up.
-- `ykdf init --import <key>`: provision a second YubiKey from the saved scalar,
-  giving two devices that produce identical self-ECDH output — a true backup.
-
-Fully compatible with the existing self-ECDH derive path: an imported key still
-has a public key, still gets a cert, and `read_public_key` + `ecdh` are
-unchanged.
-
-Security notes:
-
-- The private key transits host RAM; zeroize immediately after import.
-- Key conveyance is the sensitive surface: display-once vs passphrase-encrypted
-  file (could reuse the age/KDF machinery). Decide before building.
-- Weaker than non-extractable on-device generation; document the tradeoff so the
-  user chooses deliberately.
+Shipped as `ykdf init --exportable` (host-generate the P-256 scalar, import to
+slot 9d, display it once) and `ykdf init --import <hex>` (provision another
+device from the saved scalar). Conveyance chosen: display-once hex on stderr
+with a loud "only copy" warning. A passphrase-encrypted-file conveyance could
+still be added later if display-once proves inconvenient.
 
 ## `t`-of-`n` Shamir backup (thought experiment)
 
