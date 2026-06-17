@@ -24,6 +24,8 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 - `ykdf-core`: sponge domain separation tags (0x01 extract, 0x02 cascade)
 - `ykdf-yubikey`: PIV ECDH transport via self-ECDH on slot 9d (reads own public key from certificate)
 - `ykdf-yubikey`: HMAC-SHA1 challenge-response on OTP slot 2 for layered mode
+- `ykdf-yubikey`: provisioning module for on-device PIV slot 9d key generation and OTP slot 2 HMAC programming
+- CLI: `ykdf init` command to provision a YubiKey (on-device slot 9d key + carrier cert, optional `--layered` HMAC slot 2), with an overwrite guard and a non-backup warning
 - CLI: `ykdf derive` command with all eight profiles, pipeline override, key rotation, passphrase cascading
 - CLI: `ykdf pubkey` command for x25519, ed25519, age, and ML-KEM public key extraction
 - CLI: output formats: base64 (WireGuard), OpenSSH PEM, age bech32 identity, hex, binary

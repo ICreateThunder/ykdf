@@ -20,4 +20,6 @@ ykdf-core = { path = "../ykdf-core", version = "0.1.0" }
 yubikey.workspace = true
 yubikey-hmac-otp.workspace = true
 p256.workspace = true
+x509-cert = "0.2"
+getrandom = "0.2"
 zeroize.workspace = true

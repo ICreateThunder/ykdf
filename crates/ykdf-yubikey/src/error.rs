@@ -16,6 +16,12 @@ pub enum Error {
     EcdhFailed { detail: String },
     /// HMAC-SHA1 challenge-response failed.
     HmacFailed { detail: String },
+    /// PIV management key authentication failed.
+    MgmtAuthFailed,
+    /// PIV provisioning (key generation or certificate write) failed.
+    ProvisionFailed { detail: String },
+    /// Programming the HMAC-SHA1 secret onto OTP slot 2 failed.
+    HmacProgramFailed { detail: String },
     /// `YubiKey` PIV operation error.
     Piv(String),
 }
@@ -36,6 +42,14 @@ impl core::fmt::Display for Error {
             }
             Self::EcdhFailed { detail } => write!(f, "ECDH key agreement failed: {detail}"),
             Self::HmacFailed { detail } => write!(f, "HMAC challenge-response failed: {detail}"),
+            Self::MgmtAuthFailed => write!(
+                f,
+                "PIV management key authentication failed (key is not the default; pass --mgmt-key)"
+            ),
+            Self::ProvisionFailed { detail } => write!(f, "PIV provisioning failed: {detail}"),
+            Self::HmacProgramFailed { detail } => {
+                write!(f, "programming HMAC slot 2 failed: {detail}")
+            }
             Self::Piv(detail) => write!(f, "PIV operation failed: {detail}"),
         }
     }

@@ -15,6 +15,69 @@ pub enum Commands {
     Derive(DeriveArgs),
     /// Show the public key for a derivation
     Pubkey(PubkeyArgs),
+    /// Provision a `YubiKey` for use with YKDF
+    Init(InitArgs),
+}
+
+#[derive(clap::Args)]
+pub struct InitArgs {
+    /// Also program HMAC-SHA1 on OTP slot 2 (layered mode)
+    #[arg(long)]
+    pub layered: bool,
+
+    /// Use an exact 20-byte HMAC secret (40 hex chars) instead of a random one
+    #[arg(long, value_name = "HEX", requires = "layered")]
+    pub hmac_secret: Option<String>,
+
+    /// PIV management key (48 hex chars); defaults to the factory key
+    #[arg(long, value_name = "HEX")]
+    pub mgmt_key: Option<String>,
+
+    /// Overwrite an already-provisioned slot 9d / slot 2 without prompting
+    #[arg(long)]
+    pub force: bool,
+
+    /// PIN policy for the generated slot 9d key
+    #[arg(long, default_value = "once")]
+    pub pin_policy: PinPolicyArg,
+
+    /// Touch policy for the generated slot 9d key
+    #[arg(long, default_value = "always")]
+    pub touch_policy: TouchPolicyArg,
+}
+
+#[derive(Clone, ValueEnum)]
+pub enum PinPolicyArg {
+    Once,
+    Always,
+    Never,
+}
+
+#[derive(Clone, ValueEnum)]
+pub enum TouchPolicyArg {
+    Always,
+    Cached,
+    Never,
+}
+
+impl From<PinPolicyArg> for ykdf_yubikey::PinPolicy {
+    fn from(arg: PinPolicyArg) -> Self {
+        match arg {
+            PinPolicyArg::Once => Self::Once,
+            PinPolicyArg::Always => Self::Always,
+            PinPolicyArg::Never => Self::Never,
+        }
+    }
+}
+
+impl From<TouchPolicyArg> for ykdf_yubikey::TouchPolicy {
+    fn from(arg: TouchPolicyArg) -> Self {
+        match arg {
+            TouchPolicyArg::Always => Self::Always,
+            TouchPolicyArg::Cached => Self::Cached,
+            TouchPolicyArg::Never => Self::Never,
+        }
+    }
 }
 
 #[derive(clap::Args)]

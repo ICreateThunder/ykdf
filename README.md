@@ -187,6 +187,11 @@ ykdf/
 ### CLI Usage
 
 ```bash
+# Provision a YubiKey first (generate the slot 9d key on-device, write its cert)
+ykdf init
+# ...or also program HMAC-SHA1 on OTP slot 2 for layered mode
+ykdf init --layered
+
 # Derive a WireGuard private key (ephemeral - never hits disk)
 ykdf derive --profile x25519 --purpose wg-home
 # Enter PIV PIN, touch YubiKey → prints base64 private key
@@ -230,6 +235,23 @@ peer point storage is needed.
 ## Setup
 
 ### Single YubiKey (on-device generation)
+
+```bash
+# Provision slot 9d: generate the P-256 key on-device (private key never
+# leaves the YubiKey) and write the carrier certificate the derive path reads.
+ykdf init
+
+# Or also program HMAC-SHA1 on OTP slot 2 for layered mode in one step:
+ykdf init --layered
+```
+
+`ykdf init` refuses to overwrite an already-provisioned slot 9d unless given
+`--force`. On-device generation is non-extractable, so the slot 9d key cannot
+be backed up; if the device is lost, keys derived from the PIV factor are
+unrecoverable. Back up the derived outputs you rely on, or use the two-YubiKey
+backup setup below.
+
+The equivalent manual steps with `ykman`:
 
 ```bash
 # Generate P-256 key on-device (private key never leaves the YubiKey)

@@ -1,8 +1,13 @@
 mod error;
 pub mod hmac;
 pub mod piv;
+pub mod provision;
 
 pub use self::error::{Error, Result};
+
+// Re-exported so the CLI can build provisioning policies without depending on
+// the `yubikey` crate directly.
+pub use yubikey::{MgmKey, PinPolicy, TouchPolicy};
 
 /// IKM derivation mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
