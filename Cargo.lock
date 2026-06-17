@@ -1801,6 +1801,7 @@ version = "0.1.0"
 dependencies = [
  "getrandom 0.2.17",
  "p256",
+ "rand_core 0.6.4",
  "x509-cert",
  "ykdf-core",
  "yubikey",

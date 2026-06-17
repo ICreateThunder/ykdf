@@ -25,6 +25,17 @@ pub struct InitArgs {
     #[arg(long)]
     pub layered: bool,
 
+    /// Generate the slot 9d key on the host and display it once for backup
+    /// (importable to another device), instead of non-extractable on-device
+    /// generation
+    #[arg(long, conflicts_with = "import")]
+    pub exportable: bool,
+
+    /// Import a host-held P-256 private key (64 hex chars) into slot 9d, e.g.
+    /// to provision a backup device with the same key
+    #[arg(long, value_name = "HEX")]
+    pub import: Option<String>,
+
     /// Use an exact 20-byte HMAC secret (40 hex chars) instead of a random one
     #[arg(long, value_name = "HEX", requires = "layered")]
     pub hmac_secret: Option<String>,
