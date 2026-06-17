@@ -38,8 +38,9 @@ Split an exportable seed into Shamir shares and reconstruct from any `t`.
 - PIN / PUK / management-key rotation as part of or alongside `ykdf init`.
 - Seed-derived HMAC slot 2 secret (reproducible from a passphrase) if the
   display-once model proves inconvenient.
-- Keep secrets out of the process table: `ykdf init --hmac-secret` and
-  `--mgmt-key` take values as command-line arguments, which are visible to
-  other local users via `/proc/<pid>/cmdline` and `ps`. Add a file/stdin/env
-  input path (e.g. `--hmac-secret-file -`) so explicit secrets never hit the
-  argument list. The default random-generation path is unaffected.
+- Keep secrets out of the process table: `ykdf init --hmac-secret`,
+  `--mgmt-key`, and `--import` take values as command-line arguments, which are
+  visible to other local users via `/proc/<pid>/cmdline` and `ps` (and land in
+  shell history). Add a file/stdin/fd input path (e.g. `--import -`,
+  `--hmac-secret-file <path>`) so explicit secrets never hit the argument list.
+  The default random-generation paths are unaffected.

@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::cli::InitArgs;
 use crate::error::CliError;
@@ -101,7 +101,9 @@ pub fn run_init(args: InitArgs) -> Result<(), CliError> {
              device or recover this key (the certificate can be regenerated from it, the \
              key cannot)."
         );
-        eprintln!("slot 9d private key (hex): {}", hex::encode(&scalar[..]));
+        let mut scalar_hex = hex::encode(&scalar[..]);
+        eprintln!("slot 9d private key (hex): {scalar_hex}");
+        scalar_hex.zeroize();
     }
 
     if let Some((secret, generated)) = hmac_secret {
@@ -111,10 +113,11 @@ pub fn run_init(args: InitArgs) -> Result<(), CliError> {
             if generated {
                 // Print the secret to stderr so piping stdout (e.g. to a log)
                 // does not capture it alongside the non-secret output.
+                let mut secret_hex = hex::encode(&secret[..]);
                 eprintln!(
-                    "Generated HMAC secret (save this to reprogram another slot/device): {}",
-                    hex::encode(&secret[..])
+                    "Generated HMAC secret (save this to reprogram another slot/device): {secret_hex}"
                 );
+                secret_hex.zeroize();
             }
         } else {
             eprintln!("Skipped HMAC slot 2 programming.");
