@@ -75,7 +75,9 @@ pub fn run_init(args: InitArgs) -> Result<(), CliError> {
             provision::program_hmac_slot2(&secret, true).map_err(CliError::YubiKey)?;
             println!("Programmed HMAC-SHA1 on OTP slot 2.");
             if generated {
-                println!(
+                // Print the secret to stderr so piping stdout (e.g. to a log)
+                // does not capture it alongside the non-secret output.
+                eprintln!(
                     "Generated HMAC secret (save this to reprogram another slot/device): {}",
                     hex::encode(&secret[..])
                 );
