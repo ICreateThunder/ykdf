@@ -25,6 +25,12 @@ pub enum CliError {
     RawRequiresLength,
     /// `YubiKey` operation failed.
     YubiKey(ykdf_yubikey::Error),
+    /// PIV slot 9d already holds a key; refuse to overwrite without --force.
+    SlotOccupied,
+    /// --hmac-secret is not 40 hex characters (20 bytes).
+    InvalidHmacSecret,
+    /// --mgmt-key is not 48 hex characters (24 bytes).
+    InvalidMgmtKey,
 }
 
 impl CliError {
@@ -33,7 +39,9 @@ impl CliError {
             Self::InvalidFormat { .. }
             | Self::NoPubkey { .. }
             | Self::LengthRequiresRaw
-            | Self::RawRequiresLength => 2,
+            | Self::RawRequiresLength
+            | Self::InvalidHmacSecret
+            | Self::InvalidMgmtKey => 2,
             _ => 1,
         }
     }
@@ -63,6 +71,18 @@ impl std::fmt::Display for CliError {
             Self::LengthRequiresRaw => write!(f, "--length is only valid with --profile raw"),
             Self::RawRequiresLength => write!(f, "--length is required with --profile raw"),
             Self::YubiKey(e) => write!(f, "{e}"),
+            Self::SlotOccupied => write!(
+                f,
+                "PIV slot 9d already holds a key; provisioning would change the \
+                 derivation root and orphan existing derived keys. Re-run with \
+                 --force to overwrite."
+            ),
+            Self::InvalidHmacSecret => {
+                write!(f, "--hmac-secret must be 40 hex characters (20 bytes)")
+            }
+            Self::InvalidMgmtKey => {
+                write!(f, "--mgmt-key must be 48 hex characters (24 bytes)")
+            }
         }
     }
 }
