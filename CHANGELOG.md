@@ -27,6 +27,7 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 - `ykdf-yubikey`: provisioning module for on-device PIV slot 9d key generation and OTP slot 2 HMAC programming
 - CLI: `ykdf init` command to provision a YubiKey (on-device slot 9d key + carrier cert, optional `--layered` HMAC slot 2), with an overwrite guard and a non-backup warning
 - CLI: `ykdf init --exportable` (host-generated slot 9d key, displayed once) and `--import <hex>` to provision a backup device with the same key, using the OS CSPRNG for key generation
+- CLI: `ykdf init --mgmt-key protected|derived` to authenticate with a PIN-protected or PIN-derived PIV management key stored on the device (in addition to an explicit hex key or the factory default)
 - CLI: `ykdf derive` command with all eight profiles, pipeline override, key rotation, passphrase cascading
 - CLI: `ykdf pubkey` command for x25519, ed25519, age, and ML-KEM public key extraction
 - CLI: output formats: base64 (WireGuard), OpenSSH PEM, age bech32 identity, hex, binary

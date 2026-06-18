@@ -40,8 +40,9 @@ pub struct InitArgs {
     #[arg(long, value_name = "HEX", requires = "layered")]
     pub hmac_secret: Option<String>,
 
-    /// PIV management key (48 hex chars); defaults to the factory key
-    #[arg(long, value_name = "HEX")]
+    /// PIV management key: 48 hex chars, or `protected`/`derived` to read a
+    /// key stored on the device; defaults to the factory key
+    #[arg(long, value_name = "HEX|protected|derived")]
     pub mgmt_key: Option<String>,
 
     /// Overwrite an already-provisioned slot 9d / slot 2 without prompting

@@ -251,6 +251,19 @@ be backed up; if the device is lost, keys derived from the PIV factor are
 unrecoverable. Back up the derived outputs you rely on, or use the two-YubiKey
 backup setup below.
 
+If you have changed the PIV management key from the factory default, tell
+`ykdf init` how to authenticate. For a key stored on the device and unlocked by
+your PIN (`ykman piv info` shows *"Management key is stored on the YubiKey,
+protected by PIN"*), use `--mgmt-key protected` (or `--mgmt-key derived` for a
+PIN-derived key); for an explicit key, pass it as `--mgmt-key <48-hex>`. Note
+the `yubikey` 0.8 backend only supports TDES management keys, not the AES-192
+default on firmware 5.7+.
+
+```bash
+ykdf init --mgmt-key protected            # PIN-protected management key
+ykdf init --exportable --mgmt-key protected
+```
+
 The equivalent manual steps with `ykman`:
 
 ```bash

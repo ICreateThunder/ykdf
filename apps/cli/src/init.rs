@@ -20,7 +20,7 @@ enum PivMode {
 /// optionally, program HMAC-SHA1 on OTP slot 2.
 pub fn run_init(args: InitArgs) -> Result<(), CliError> {
     // Resolve all inputs up front so bad arguments fail before touching hardware.
-    let mgmt = resolve_mgmt(&args)?;
+    let mgm = resolve_mgm_source(&args)?;
     let hmac_secret = resolve_hmac_secret(&args)?;
     let piv_mode = resolve_piv_mode(&args)?;
 
@@ -60,24 +60,19 @@ pub fn run_init(args: InitArgs) -> Result<(), CliError> {
     // can be displayed once after a successful import.
     let (public, exported) = match piv_mode {
         PivMode::OnDevice => (
-            provision::provision_piv(&mut yubikey, pin.as_bytes(), mgmt, policy)
+            provision::provision_piv(&mut yubikey, pin.as_bytes(), mgm, policy)
                 .map_err(CliError::YubiKey)?,
             None,
         ),
         PivMode::Exportable => {
             let scalar = provision::generate_p256_scalar();
-            let public = provision::provision_piv_import(
-                &mut yubikey,
-                pin.as_bytes(),
-                mgmt,
-                policy,
-                &scalar,
-            )
-            .map_err(CliError::YubiKey)?;
+            let public =
+                provision::provision_piv_import(&mut yubikey, pin.as_bytes(), mgm, policy, &scalar)
+                    .map_err(CliError::YubiKey)?;
             (public, Some(scalar))
         }
         PivMode::Import(scalar) => (
-            provision::provision_piv_import(&mut yubikey, pin.as_bytes(), mgmt, policy, &scalar)
+            provision::provision_piv_import(&mut yubikey, pin.as_bytes(), mgm, policy, &scalar)
                 .map_err(CliError::YubiKey)?,
             None,
         ),
@@ -133,14 +128,21 @@ pub fn run_init(args: InitArgs) -> Result<(), CliError> {
     Ok(())
 }
 
-/// Resolve the PIV management key: factory default unless `--mgmt-key` is given.
-fn resolve_mgmt(args: &InitArgs) -> Result<ykdf_yubikey::MgmKey, CliError> {
-    match &args.mgmt_key {
+/// Resolve where the PIV management key comes from. `--mgmt-key` accepts the
+/// keywords `protected` or `derived` (read the key from the device), a 48-hex
+/// explicit key, or is absent for the factory default.
+fn resolve_mgm_source(args: &InitArgs) -> Result<provision::MgmKeySource, CliError> {
+    use provision::MgmKeySource;
+    match args.mgmt_key.as_deref() {
+        None => Ok(MgmKeySource::Default),
+        Some("protected") => Ok(MgmKeySource::Protected),
+        Some("derived") => Ok(MgmKeySource::Derived),
         Some(hex) => {
             let bytes = decode_hex(hex, 24).ok_or(CliError::InvalidMgmtKey)?;
-            ykdf_yubikey::MgmKey::from_bytes(&bytes[..]).map_err(|_| CliError::InvalidMgmtKey)
+            let key = ykdf_yubikey::MgmKey::from_bytes(&bytes[..])
+                .map_err(|_| CliError::InvalidMgmtKey)?;
+            Ok(MgmKeySource::Explicit(key))
         }
-        None => Ok(ykdf_yubikey::MgmKey::default()),
     }
 }
 

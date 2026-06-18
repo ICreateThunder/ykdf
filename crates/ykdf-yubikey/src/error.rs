@@ -18,6 +18,8 @@ pub enum Error {
     HmacFailed { detail: String },
     /// PIV management key authentication failed.
     MgmtAuthFailed,
+    /// The PIN-protected or PIN-derived management key could not be read.
+    MgmtKeyUnavailable,
     /// PIV provisioning (key generation or certificate write) failed.
     ProvisionFailed { detail: String },
     /// A supplied private scalar is not a valid P-256 key.
@@ -46,7 +48,12 @@ impl core::fmt::Display for Error {
             Self::HmacFailed { detail } => write!(f, "HMAC challenge-response failed: {detail}"),
             Self::MgmtAuthFailed => write!(
                 f,
-                "PIV management key authentication failed (key is not the default; pass --mgmt-key)"
+                "PIV management key authentication failed (wrong key; pass --mgmt-key <hex>, \
+                 or 'protected'/'derived' if the key is stored on the device)"
+            ),
+            Self::MgmtKeyUnavailable => write!(
+                f,
+                "could not read the PIN-protected or PIN-derived management key from this YubiKey"
             ),
             Self::ProvisionFailed { detail } => write!(f, "PIV provisioning failed: {detail}"),
             Self::InvalidScalar { detail } => write!(f, "invalid P-256 private key: {detail}"),

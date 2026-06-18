@@ -35,6 +35,12 @@ Split an exportable seed into Shamir shares and reconstruct from any `t`.
 
 ## Other deferred items
 
+- AES-192 PIV management keys: the `yubikey` 0.8 backend only supports TDES
+  management keys, so firmware 5.7+ devices (whose default management key is
+  AES-192) cannot be authenticated by `ykdf init` even with the default value.
+  Blocked until the `yubikey` crate gains non-TDES MGM key support; workaround
+  is to set a TDES management key via `ykman`. PIN-protected/derived TDES keys
+  are supported (`--mgmt-key protected|derived`).
 - PIN / PUK / management-key rotation as part of or alongside `ykdf init`.
 - Seed-derived HMAC slot 2 secret (reproducible from a passphrase) if the
   display-once model proves inconvenient.
