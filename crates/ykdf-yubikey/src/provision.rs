@@ -55,6 +55,36 @@ impl Default for PivPolicy {
     }
 }
 
+/// How to obtain the PIV management key for provisioning.
+pub enum MgmKeySource {
+    /// The factory default management key.
+    Default,
+    /// An explicitly supplied management key.
+    Explicit(MgmKey),
+    /// The PIN-protected key stored on the device (requires PIN verification).
+    Protected,
+    /// The PIN-derived key (requires PIN verification).
+    Derived,
+}
+
+/// Resolve and authenticate with the PIV management key.
+///
+/// The PIN must already be verified: protected and derived keys are read from
+/// PIN-gated data on the device.
+fn authenticate_mgm(yubikey: &mut YubiKey, source: MgmKeySource, pin: &[u8]) -> crate::Result<()> {
+    let key = match source {
+        MgmKeySource::Default => MgmKey::default(),
+        MgmKeySource::Explicit(key) => key,
+        MgmKeySource::Protected => {
+            MgmKey::get_protected(yubikey).map_err(|_| Error::MgmtKeyUnavailable)?
+        }
+        MgmKeySource::Derived => {
+            MgmKey::get_derived(yubikey, pin).map_err(|_| Error::MgmtKeyUnavailable)?
+        }
+    };
+    yubikey.authenticate(key).map_err(|_| Error::MgmtAuthFailed)
+}
+
 /// Open the first connected `YubiKey` over PC/SC for provisioning.
 ///
 /// # Errors
@@ -83,18 +113,17 @@ pub fn slot9d_occupied(yubikey: &mut YubiKey) -> bool {
 /// # Errors
 ///
 /// Returns `Error::WrongPin`/`Error::PinLocked` on PIN failure,
-/// `Error::MgmtAuthFailed` if management key authentication fails, or
-/// `Error::ProvisionFailed` if key generation or certificate writing fails.
+/// `Error::MgmtKeyUnavailable`/`Error::MgmtAuthFailed` on management key
+/// failure, or `Error::ProvisionFailed` if key generation or certificate
+/// writing fails.
 pub fn provision_piv(
     yubikey: &mut YubiKey,
     pin: &[u8],
-    mgmt: MgmKey,
+    mgm: MgmKeySource,
     policy: PivPolicy,
 ) -> crate::Result<Vec<u8>> {
     crate::piv::verify_pin(yubikey, pin)?;
-    yubikey
-        .authenticate(mgmt)
-        .map_err(|_| Error::MgmtAuthFailed)?;
+    authenticate_mgm(yubikey, mgm, pin)?;
 
     let public = piv::generate(
         yubikey,
@@ -135,13 +164,14 @@ pub fn generate_p256_scalar() -> Zeroizing<[u8; 32]> {
 /// # Errors
 ///
 /// Returns `Error::InvalidScalar` if the scalar is not a valid P-256 key,
-/// `Error::WrongPin`/`Error::PinLocked` on PIN failure, `Error::MgmtAuthFailed`
-/// if management key authentication fails, or `Error::ProvisionFailed` if the
-/// import or certificate write fails.
+/// `Error::WrongPin`/`Error::PinLocked` on PIN failure,
+/// `Error::MgmtKeyUnavailable`/`Error::MgmtAuthFailed` on management key
+/// failure, or `Error::ProvisionFailed` if the import or certificate write
+/// fails.
 pub fn provision_piv_import(
     yubikey: &mut YubiKey,
     pin: &[u8],
-    mgmt: MgmKey,
+    mgm: MgmKeySource,
     policy: PivPolicy,
     scalar: &[u8; 32],
 ) -> crate::Result<Vec<u8>> {
@@ -157,9 +187,7 @@ pub fn provision_piv_import(
     })?;
 
     crate::piv::verify_pin(yubikey, pin)?;
-    yubikey
-        .authenticate(mgmt)
-        .map_err(|_| Error::MgmtAuthFailed)?;
+    authenticate_mgm(yubikey, mgm, pin)?;
 
     // NOTE: import_ecc_key takes (.., touch_policy, pin_policy) -- the REVERSE
     // of piv::generate's (pin_policy, touch_policy) argument order.
