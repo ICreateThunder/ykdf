@@ -68,3 +68,42 @@ pub fn post_process_1024(expanded: &ExpandedBytes) -> Result<ProfileOutput> {
         decapsulation_key: dk.to_bytes().to_vec(),
     }))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{MlKem768, ProfileOutput, Seed, post_process_768};
+    use crate::types::ExpandedBytes;
+    use ml_kem::{B32, Decapsulate, DecapsulationKey, KeyExport};
+
+    /// Interop closer: the emitted ML-KEM-768 keypair must be a *working*
+    /// keypair, not just well-sized bytes. We rebuild the keypair from the same
+    /// seed, confirm the emitted bytes are its canonical encoding (ek =
+    /// standard 1184-byte key, dk = 64-byte seed form), then encapsulate to the
+    /// encapsulation key and decapsulate with the decapsulation key and require
+    /// the shared secrets to agree. FIPS 203 compliance of the primitive itself
+    /// is delegated to the pinned `ml-kem` crate's own known-answer tests.
+    #[test]
+    fn mlkem768_emits_working_keypair() {
+        let seed_bytes = [0x42u8; 64];
+        let out = post_process_768(&ExpandedBytes::new(seed_bytes.to_vec())).unwrap();
+        let ProfileOutput::MlKemKeypair(kp) = &out else {
+            panic!("expected MlKemKeypair");
+        };
+
+        let seed = Seed::try_from(&seed_bytes[..]).unwrap();
+        let dk = DecapsulationKey::<MlKem768>::from_seed(seed);
+        let ek = dk.encapsulation_key();
+
+        // Emitted bytes are exactly this keypair's canonical encoding.
+        assert_eq!(kp.encapsulation_key, ek.to_bytes().to_vec());
+        assert_eq!(kp.decapsulation_key, dk.to_bytes().to_vec());
+        assert_eq!(kp.encapsulation_key.len(), 1184);
+        assert_eq!(kp.decapsulation_key.len(), 64);
+
+        // Functional validity: encaps then decaps yields the same shared secret.
+        let message = B32::try_from(&[0x07u8; 32][..]).unwrap();
+        let (ciphertext, shared_a) = ek.encapsulate_deterministic(&message);
+        let shared_b = dk.decapsulate(&ciphertext);
+        assert_eq!(shared_a, shared_b);
+    }
+}
