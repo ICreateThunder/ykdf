@@ -52,6 +52,37 @@ YKDF handles cryptographic key material. Relevant threats:
 - **Supply chain** - cargo-deny allowlist, cargo-audit in CI, signed tags, reproducible builds (goal)
 - **Dependency compromise** - minimal dependency surface, audited crates preferred
 
+## Cryptographic Algorithm Notes
+
+YKDF derives keys using only published, peer-reviewed primitives. The default
+derivation path uses HKDF (RFC 5869) over SHA-512 or SHA3-512, the SHAKE256
+sponge, X25519/Ed25519 (RFC 7748/8032), ML-KEM (FIPS 203), and Argon2id
+(RFC 9106) for optional passphrase stretching. All key and nonce generation
+uses the operating system CSPRNG.
+
+### SHA-1 in optional layered mode
+
+The optional `--layered` mode reads a second hardware factor from a YubiKey OTP
+slot using HMAC-SHA1 challenge-response. SHA-1 appears here only because it is
+the algorithm that the YubiKey HMAC-SHA1 slot implements; it is not a YKDF
+design choice and is not part of the default derivation path.
+
+This usage is not affected by SHA-1's known weaknesses:
+
+- SHA-1's broken property is **collision resistance**. YKDF never relies on
+  SHA-1 for collision resistance, integrity, or signatures.
+- The 20-byte HMAC-SHA1 response is treated purely as additional **input key
+  material**: it is concatenated with the primary PIV ECDH shared secret
+  (`ecdh_secret || hmac_response`) and the combined value is fed into an
+  HKDF/SHAKE256 extract under a fixed domain-separation salt; the resulting
+  master key is SHA-512/SHA3-512/SHAKE256.
+- The relevant security property is HMAC-SHA1's strength as a **pseudorandom
+  function**, which remains unbroken, not SHA-1 collision resistance.
+
+An attacker able to compute SHA-1 collisions gains nothing against this
+construction. Users who prefer to avoid SHA-1 entirely can simply omit
+`--layered`, leaving only the PIV P-256 ECDH factor.
+
 ## No Telemetry
 
 YKDF does not phone home. No usage analytics, no error reporting, no network calls beyond YubiKey USB communication. This is a contribution requirement.
