@@ -35,3 +35,7 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 - CLI: `--ikm-file` flag for testing without YubiKey hardware
 - CLI: `--layered` flag for PIV + HMAC combined entropy
 - CLI: `--passphrase` flag for Argon2id-stretched additional factor
+
+### Changed
+
+- `ykdf-core`: `Argon2Params` cost fields (`m_cost`, `t_cost`, `p_cost`) are now private, fixing the cost at the hardened tier (m=128 MiB, t=3, p=1). The only constructors are `Default` and `with_salt`, so integrators can no longer set sub-floor costs or break cross-device determinism by varying them (#21)

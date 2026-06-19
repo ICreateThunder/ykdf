@@ -23,20 +23,27 @@ const DEFAULT_SALT: &[u8] = b"ykdf-v1-argon2id";
 
 /// Argon2id parameters for passphrase stretching.
 ///
-/// Defaults are tuned for offline root-key derivation, not interactive login:
-/// m=131072 KiB (128 MiB), t=3, p=1. The memory cost is deliberately capped so
-/// the same passphrase stretches identically across every supported target,
-/// including memory-constrained WASM and mobile environments; raising it
-/// further would break cross-platform determinism. These parameters are part
-/// of the derivation: changing them changes every derived key.
+/// The cost parameters are fixed at a single hardened tier (m=131072 KiB
+/// (128 MiB), t=3, p=1) and are not externally configurable: the only public
+/// constructors are [`Argon2Params::default`] and [`Argon2Params::with_salt`].
+///
+/// This is deliberate. The cost is part of the derivation identity (bound via
+/// the descriptor in [`cascade_passphrase`]), so letting integrators vary it
+/// would both (a) allow a caller to silently weaken the KDF below a safe floor
+/// and (b) break cross-device determinism, since the same passphrase would
+/// stretch differently under different costs. The memory cost is additionally
+/// capped at this tier so a passphrase stretches identically on
+/// memory-constrained WASM and mobile targets. A future, stronger tier would
+/// be added as a new named constructor (additively, via a new descriptor), not
+/// by mutating these fields.
 #[derive(Clone)]
 pub struct Argon2Params {
-    /// Memory cost in KiB (default: 131072 = 128 MiB).
-    pub m_cost: u32,
-    /// Time cost / iterations (default: 3).
-    pub t_cost: u32,
-    /// Parallelism (default: 1).
-    pub p_cost: u32,
+    /// Memory cost in KiB. Fixed at 131072 (128 MiB) by `Default`.
+    m_cost: u32,
+    /// Time cost / iterations. Fixed at 3 by `Default`.
+    t_cost: u32,
+    /// Parallelism. Fixed at 1 by `Default`.
+    p_cost: u32,
     salt: Option<Vec<u8>>,
 }
 
