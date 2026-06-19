@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use ykdf_core::{
-    Argon2Params, Context, Pipeline, Profile, cascade, derive, derive_raw, extract,
+    Argon2Params, Context, Pipeline, Profile, cascade_passphrase, derive, derive_raw, extract,
     stretch_passphrase,
 };
 use zeroize::Zeroizing;
@@ -97,5 +97,5 @@ fn apply_passphrase(
         rpassword::prompt_password("Passphrase: ").map_err(CliError::PassphraseRead)?,
     );
     let stretched = stretch_passphrase(pass.as_bytes(), &Argon2Params::default())?;
-    cascade(master_key, stretched.as_bytes(), pipeline).map_err(CliError::Core)
+    cascade_passphrase(master_key, &stretched, pipeline).map_err(CliError::Core)
 }

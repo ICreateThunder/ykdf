@@ -20,4 +20,6 @@ pub use self::profile::{Profile, ProfileOutput};
 pub use self::types::{ExpandedBytes, Ikm, MasterKey};
 
 #[cfg(feature = "argon2")]
-pub use self::stretch::{Argon2Params, StretchedPassphrase, stretch_passphrase};
+pub use self::stretch::{
+    Argon2Params, StretchedPassphrase, cascade_passphrase, stretch_passphrase,
+};
