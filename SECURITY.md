@@ -72,9 +72,10 @@ This usage is not affected by SHA-1's known weaknesses:
 - SHA-1's broken property is **collision resistance**. YKDF never relies on
   SHA-1 for collision resistance, integrity, or signatures.
 - The 20-byte HMAC-SHA1 response is treated purely as additional **input key
-  material**. It is cascaded (TLS 1.3 style) into an HKDF/SHAKE256 extract that
-  is keyed on the primary PIV ECDH factor; the resulting master key is
-  SHA-512/SHA3-512/SHAKE256.
+  material**: it is concatenated with the primary PIV ECDH shared secret
+  (`ecdh_secret || hmac_response`) and the combined value is fed into an
+  HKDF/SHAKE256 extract under a fixed domain-separation salt; the resulting
+  master key is SHA-512/SHA3-512/SHAKE256.
 - The relevant security property is HMAC-SHA1's strength as a **pseudorandom
   function**, which remains unbroken, not SHA-1 collision resistance.
 
