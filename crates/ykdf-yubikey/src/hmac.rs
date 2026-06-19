@@ -38,3 +38,17 @@ pub fn challenge_response() -> crate::Result<Zeroizing<Vec<u8>>> {
 
     Ok(Zeroizing::new(hmac_result.to_vec()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::CHALLENGE;
+
+    /// Frozen v1 invariant: the HMAC-SHA1 challenge is fixed. Changing it
+    /// re-namespaces every layered-mode derivation, so it is part of the v1
+    /// format. The golden vectors run over `--ikm-file` and never touch this
+    /// hardware path, so this is the only guard against a silent change.
+    #[test]
+    fn challenge_is_frozen() {
+        assert_eq!(CHALLENGE, b"ykdf-v1");
+    }
+}
