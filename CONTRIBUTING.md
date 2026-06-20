@@ -55,6 +55,19 @@ cargo build --workspace
 cargo test --workspace
 ```
 
+## Coding Standards
+
+Code style is defined and enforced by tooling, not prose:
+
+- **Formatting:** `cargo fmt` (rustfmt defaults). CI runs `cargo fmt --all -- --check`.
+- **Linting:** `cargo clippy --workspace --all-targets -- -D warnings` at the
+  pedantic level. Warnings are errors in CI.
+- **Memory safety:** `unsafe` is forbidden workspace-wide (`unsafe_code = "forbid"`).
+- **Edition:** Rust 2024, minimum toolchain as in "Development Setup" above.
+- **Spelling:** `typos` runs in CI.
+
+A change that does not pass `cargo fmt --check` and pedantic clippy will not merge.
+
 ## Test Coverage
 
 We measure `ykdf-core` coverage with
