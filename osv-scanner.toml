@@ -1,0 +1,11 @@
+# Configuration for osv-scanner / the OpenSSF Scorecard Vulnerabilities check.
+#
+# The detached manual tooling crates (fuzz/, timing/) do not commit a
+# Cargo.lock, so the scanner only evaluates the shipped product's dependency
+# graph (the workspace Cargo.lock). The single remaining advisory is a
+# transitive dependency that is never reached at runtime, documented below and
+# also ignored in .cargo/audit.toml and deny.toml.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2023-0071"
+reason = "Marvin Attack on the rsa crate (timing side-channel key recovery). Transitive via yubikey 0.8 -> rsa 0.9. YKDF performs only P-256 ECDH on the PIV applet and never executes any RSA operation, so the vulnerable code path is unreachable. No fixed rsa release exists; tracked upstream."
