@@ -27,11 +27,8 @@ Once a report is received, the maintainer follows this process:
    entry.
 5. **Credit** the reporter (see below).
 
-### Response Timeline
-
-- **48 hours** - acknowledgment
-- **5 business days** - initial assessment
-- **90 days** - coordinated disclosure
+These are target deadlines: 48 hours to acknowledge, 5 business days to assess,
+90 days to coordinated disclosure.
 
 ### Credit
 
