@@ -19,8 +19,9 @@
 //! input here.
 
 use serde::{Deserialize, Serialize};
-use ykdf_core::expand::expand;
-use ykdf_core::{Context, Ikm, Pipeline, Profile, ProfileOutput, derive, derive_raw, extract};
+use ykdf_core::{
+    Context, Ikm, Pipeline, Profile, ProfileOutput, derive, derive_raw, expand, extract,
+};
 
 /// The extract salt, embedded here independently of the library so the oracle
 /// does not borrow the value it is meant to check.

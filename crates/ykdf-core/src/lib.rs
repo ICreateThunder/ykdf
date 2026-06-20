@@ -1,23 +1,30 @@
+// Implementation modules are private; the public API is exactly the curated
+// re-exports below. This keeps `ykdf-core`'s surface minimal and stable (it is
+// what the JNI/WASM wrappers bind to) and leaves the internals free to change
+// without a SemVer break.
+mod context;
+mod derive;
 mod error;
-
-pub mod context;
-pub mod derive;
-pub mod expand;
-pub mod extract;
-pub mod pipeline;
-pub mod profile;
-pub mod types;
+mod expand;
+mod extract;
+mod pipeline;
+mod profile;
+mod types;
 
 #[cfg(feature = "argon2")]
-pub mod stretch;
+mod stretch;
 
 pub use self::context::Context;
 pub use self::derive::{derive, derive_raw};
 pub use self::error::{Error, Result};
+pub use self::expand::expand;
 pub use self::extract::{cascade, extract};
 pub use self::pipeline::Pipeline;
-pub use self::profile::{Profile, ProfileOutput};
-pub use self::types::{ExpandedBytes, Ikm, MasterKey};
+pub use self::profile::{
+    AgeIdentityBytes, Ed25519SeedBytes, MlKemKeypairBytes, Profile, ProfileOutput, RawBytes,
+    SecretKeyBytes,
+};
+pub use self::types::{ExpandedBytes, Ikm, MIN_IKM_LEN, MasterKey};
 
 #[cfg(feature = "argon2")]
 pub use self::stretch::{

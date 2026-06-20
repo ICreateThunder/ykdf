@@ -7,6 +7,7 @@ use crate::types::ExpandedBytes;
 /// # Errors
 ///
 /// This function is infallible but returns `Result` for API consistency.
+#[allow(clippy::unnecessary_wraps)]
 pub fn post_process(expanded: &ExpandedBytes) -> Result<ProfileOutput> {
     Ok(ProfileOutput::Raw(RawBytes(expanded.as_bytes().to_vec())))
 }
