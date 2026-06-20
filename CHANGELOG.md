@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-06-20
+
+First release. The v1 derivation format is frozen and specified
+([docs/SPEC.md](docs/SPEC.md)) with golden conformance vectors
+([vectors/v1.json](vectors/v1.json)).
+
 ### Added
 
 - Repository scaffold: LICENSE, SECURITY.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md, GOVERNANCE.md
