@@ -85,7 +85,9 @@ jobs:
     permissions:
       actions: read # read the workflow run to build provenance
       id-token: write # sign the provenance via Sigstore (OIDC)
-      contents: read
+      contents: write # required by the generator's upload-assets job, which is
+      # declared (and permission-checked at startup) even though we skip it via
+      # upload-assets: false below. Granting read-only fails workflow validation.
     # SLSA build provenance. Produces a signed `<artifact>.intoto.jsonl`
     # attestation, which OpenSSF Scorecard's signed-releases check recognises as
     # provenance. The release job downloads it (as a run artifact) and publishes
