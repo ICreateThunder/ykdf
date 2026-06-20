@@ -18,6 +18,14 @@ jobs:
       id-token: write # keyless cosign signing via GitHub OIDC
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    outputs:
+      # NOTE: this single `hashes` output assumes a single-entry matrix. If more
+      # targets are ever added below, a matrix job's output is overwritten by the
+      # last entry, so provenance would cover only one artifact. When that
+      # happens, collect each target's hashes (e.g. upload per-target hash files
+      # and merge them in a separate non-matrix job) before feeding the SLSA
+      # generator. See the provenance job.
+      hashes: ${{ steps.hash.outputs.hashes }}
     strategy:
       matrix:
         include:
@@ -49,12 +57,19 @@ jobs:
       - name: Sign artifact (keyless)
         # Keyless signing via the workflow's GitHub OIDC identity. Produces a
         # Sigstore bundle (signature + certificate + Rekor entry) logged in the
-        # public transparency log. Verify with `cosign verify-blob --bundle`
-        # (see README).
+        # public transparency log. The `.sigstore.json` extension is the
+        # canonical Sigstore bundle name and the one OpenSSF Scorecard's
+        # signed-releases check recognises. Verify with `cosign verify-blob
+        # --bundle` (see README).
         run: |
           cosign sign-blob --yes \
-            --bundle "${ARCHIVE}.bundle" \
+            --bundle "${ARCHIVE}.sigstore.json" \
             "${ARCHIVE}"
+      - name: Generate subject hashes for provenance
+        id: hash
+        # Base64-encoded `sha256sum` line consumed by the SLSA generator as the
+        # provenance subject.
+        run: echo "hashes=$(sha256sum "${ARCHIVE}" | base64 -w0)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-${{ matrix.target }}
@@ -62,19 +77,44 @@ jobs:
             ykdf-*.tar.gz
             ykdf-*.tar.gz.sha256
             ykdf-*.tar.gz.sha512
-            ykdf-*.tar.gz.bundle
+            ykdf-*.tar.gz.sigstore.json
           retention-days: 1
+
+  provenance:
+    needs: [build]
+    permissions:
+      actions: read # read the workflow run to build provenance
+      id-token: write # sign the provenance via Sigstore (OIDC)
+      contents: read
+    # SLSA build provenance. Produces a signed `<artifact>.intoto.jsonl`
+    # attestation, which OpenSSF Scorecard's signed-releases check recognises as
+    # provenance. The release job downloads it (as a run artifact) and publishes
+    # it with the release.
+    # NOTE: this reusable workflow MUST be referenced by an immutable semantic
+    # version tag, not a commit SHA. The generator verifies its own ref by tag,
+    # so SHA pinning breaks its trust model. This is the documented exception to
+    # our otherwise-SHA-pinned actions.
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: "${{ needs.build.outputs.hashes }}"
+      # Do NOT upload to the release here: GitHub immutable releases reject
+      # post-publish asset uploads, so every asset must go in the single
+      # `gh release create` call below. The provenance is exposed as a run
+      # artifact and picked up by the release job's download-all step.
+      upload-assets: false
 
   release:
     permissions:
       contents: write
-    needs: build
+    needs: [build, provenance]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
+          # No `name`: download every artifact from this run (the build assets
+          # and the SLSA provenance), flattened into one directory.
           path: artifacts
           merge-multiple: true
       - name: Extract release notes
