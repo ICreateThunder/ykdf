@@ -8,6 +8,7 @@ edition = "2021"
 dudect-bencher = "0.7"
 rand = "0.10"
 ykdf-core = { path = "../crates/ykdf-core" }
+zeroize = "1.9.0"
 
 [[bin]]
 name = "ykdf-timing"

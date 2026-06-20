@@ -37,8 +37,8 @@ Each line reports `max t`, the Welch t-statistic between the two input classes:
 A representative run on commodity x86-64:
 
 ```
-bench derive_is_secret_independent  ... : n == +0.040M, max t = +1.38
-bench extract_is_secret_independent ... : n == +0.100M, max t = +2.14
+bench derive_is_secret_independent  ... : n == +0.086M, max t = +1.80
+bench extract_is_secret_independent ... : n == +0.091M, max t = -1.81
 ```
 
 Both well under the threshold — no detectable secret-dependent timing. Results

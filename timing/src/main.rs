@@ -17,19 +17,21 @@
 use dudect_bencher::{ctbench_main, BenchRng, Class, CtRunner};
 use rand::{Rng, RngExt};
 use ykdf_core::{derive, extract, Context, Ikm, Pipeline, Profile};
+use zeroize::Zeroizing;
 
 const ITERS: usize = 100_000;
 
-/// Build `ITERS` 32-byte inputs, each either the fixed all-zero secret (Left)
-/// or a fresh random secret (Right), paired with its class.
-fn classed_inputs(rng: &mut BenchRng) -> Vec<(Class, [u8; 32])> {
+/// Build `ITERS` 32-byte secrets, each either the fixed all-zero secret (Left)
+/// or a fresh random secret (Right), paired with its class. Secrets are held in
+/// `Zeroizing` so they are wiped on drop.
+fn classed_secrets(rng: &mut BenchRng) -> Vec<(Class, Zeroizing<[u8; 32]>)> {
     let mut out = Vec::with_capacity(ITERS);
     for _ in 0..ITERS {
         if rng.random::<bool>() {
-            out.push((Class::Left, [0u8; 32]));
+            out.push((Class::Left, Zeroizing::new([0u8; 32])));
         } else {
-            let mut secret = [0u8; 32];
-            rng.fill_bytes(&mut secret);
+            let mut secret = Zeroizing::new([0u8; 32]);
+            rng.fill_bytes(secret.as_mut_slice());
             out.push((Class::Right, secret));
         }
     }
@@ -37,9 +39,15 @@ fn classed_inputs(rng: &mut BenchRng) -> Vec<(Class, [u8; 32])> {
 }
 
 /// `extract` (HMAC-SHA512 over the secret IKM) must be constant-time in the IKM.
+/// The `Ikm` values are built up front so only `extract` is inside the timed
+/// region (no per-iteration allocation in the measurement loop).
 fn extract_is_secret_independent(runner: &mut CtRunner, rng: &mut BenchRng) {
-    for (class, secret) in classed_inputs(rng) {
-        let ikm = Ikm::new(secret.to_vec()).unwrap();
+    let prepared: Vec<(Class, Ikm)> = classed_secrets(rng)
+        .into_iter()
+        .map(|(class, secret)| (class, Ikm::new(secret.to_vec()).unwrap()))
+        .collect();
+
+    for (class, ikm) in prepared {
         runner.run_one(class, || {
             let _ = extract(&ikm, Pipeline::HkdfSha512).unwrap();
         });
@@ -50,7 +58,7 @@ fn extract_is_secret_independent(runner: &mut CtRunner, rng: &mut BenchRng) {
 /// clamp over a secret master key) must be constant-time in the master key.
 fn derive_is_secret_independent(runner: &mut CtRunner, rng: &mut BenchRng) {
     let ctx = Context::new(Profile::X25519, "timing", 0).unwrap();
-    let prepared: Vec<(Class, _)> = classed_inputs(rng)
+    let prepared: Vec<(Class, _)> = classed_secrets(rng)
         .into_iter()
         .map(|(class, secret)| {
             let ikm = Ikm::new(secret.to_vec()).unwrap();
