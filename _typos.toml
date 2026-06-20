@@ -2,5 +2,7 @@
 extend-exclude = ["target/", "*.lock"]
 
 [default.extend-words]
+# in-toto provenance format (SLSA `.intoto.jsonl` attestations)
+intoto = "intoto"
 
 [default.extend-identifiers]

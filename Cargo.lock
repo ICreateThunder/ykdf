@@ -1958,7 +1958,7 @@ dependencies = [
 
 [[package]]
 name = "ykdf"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64",
  "bech32",
@@ -1974,7 +1974,7 @@ dependencies = [
 
 [[package]]
 name = "ykdf-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "argon2",
  "bech32",
@@ -1994,7 +1994,7 @@ dependencies = [
 
 [[package]]
 name = "ykdf-yubikey"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "getrandom 0.2.17",
  "p256",

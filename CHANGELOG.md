@@ -7,6 +7,10 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-06-20
+
+Release-pipeline and documentation patch; no library or API changes.
+
 ### Added
 
 - `ROADMAP.md` documenting project direction and the conformance-gated 1.0.0.
