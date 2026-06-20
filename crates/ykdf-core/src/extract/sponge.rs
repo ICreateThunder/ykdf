@@ -13,7 +13,10 @@ const SALT: &[u8] = b"ykdf-v1";
 /// # Errors
 ///
 /// This function is infallible but returns `Result` for API consistency.
+// Infallible, but returns `Result` to match the fallible HKDF pipelines so
+// `extract()` can dispatch over a uniform signature.
 #[must_use = "master key must not be discarded"]
+#[allow(clippy::unnecessary_wraps)]
 pub fn extract(ikm: &Ikm) -> Result<MasterKey> {
     let mut hasher = Shake256::default();
     // Domain tag distinguishes extract (0x01) from cascade (0x02) so the
@@ -33,7 +36,10 @@ pub fn extract(ikm: &Ikm) -> Result<MasterKey> {
 /// # Errors
 ///
 /// This function is infallible but returns `Result` for API consistency.
+// Infallible, but returns `Result` to match the fallible HKDF pipelines so
+// `cascade()` can dispatch over a uniform signature.
 #[must_use = "cascaded key must not be discarded"]
+#[allow(clippy::unnecessary_wraps)]
 pub fn cascade(early_secret: &MasterKey, additional_ikm: &[u8]) -> Result<MasterKey> {
     let mut hasher = Shake256::default();
     // Domain tag distinguishes cascade (0x02) from extract (0x01) so the

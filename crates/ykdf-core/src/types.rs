@@ -43,7 +43,10 @@ impl Ikm {
 pub struct MasterKey([u8; 64]);
 
 impl MasterKey {
-    pub fn from_bytes(bytes: [u8; 64]) -> Self {
+    /// Construct a master key from raw bytes. Crate-internal: only the extract
+    /// phase produces master keys, so external callers cannot fabricate one and
+    /// bypass the hardware-derived guarantee.
+    pub(crate) fn from_bytes(bytes: [u8; 64]) -> Self {
         Self(bytes)
     }
 
@@ -57,7 +60,10 @@ impl MasterKey {
 pub struct ExpandedBytes(Vec<u8>);
 
 impl ExpandedBytes {
-    pub fn new(bytes: Vec<u8>) -> Self {
+    /// Construct expanded bytes. Crate-internal: only the expand phase produces
+    /// these, so external callers cannot feed arbitrary bytes into profile
+    /// post-processing.
+    pub(crate) fn new(bytes: Vec<u8>) -> Self {
         Self(bytes)
     }
 
