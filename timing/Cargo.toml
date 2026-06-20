@@ -1,0 +1,18 @@
+[package]
+name = "ykdf-timing"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[dependencies]
+dudect-bencher = "0.7"
+rand = "0.10"
+ykdf-core = { path = "../crates/ykdf-core" }
+
+[[bin]]
+name = "ykdf-timing"
+path = "src/main.rs"
+
+# Detached from the main workspace: this is a manual measurement tool and must
+# not pull dudect-bencher/rand into the stable build or cargo-deny graph.
+[workspace]
