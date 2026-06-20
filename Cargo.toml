@@ -5,6 +5,9 @@ members = [
   "crates/ykdf-yubikey",
   "apps/cli",
 ]
+# The fuzz crate needs nightly and is its own workspace; keep it out of the
+# stable build.
+exclude = ["fuzz"]
 
 [workspace.package]
 version = "0.1.0"
