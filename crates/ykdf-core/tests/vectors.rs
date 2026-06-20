@@ -52,6 +52,10 @@ struct VectorFile {
     vectors: Vec<Vector>,
 }
 
+/// `Debug` is intentional: an `assert_eq!` failure prints the full hex of the
+/// master key, expanded bytes, and derived output, but every input here is a
+/// public synthetic test constant (sequential IKM bytes), not real secret
+/// material, so there is nothing sensitive to leak.
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
 struct Vector {
     name: String,
@@ -91,7 +95,7 @@ struct Output {
 
 /// Input specification for one vector (outputs are computed).
 struct Spec {
-    name: &'static str,
+    name: String,
     ikm: &'static [u8],
     passphrase: Option<&'static str>,
     pipeline: Pipeline,
@@ -101,15 +105,15 @@ struct Spec {
     length: Option<usize>,
 }
 
-const fn spec(
-    name: &'static str,
+fn spec(
+    name: &str,
     pipeline: Pipeline,
     profile: Profile,
     purpose: &'static str,
     index: u32,
 ) -> Spec {
     Spec {
-        name,
+        name: name.to_string(),
         ikm: &IKM_32,
         passphrase: None,
         pipeline,
@@ -157,8 +161,7 @@ fn matrix() -> Vec<Spec> {
         (Shake256, "shake256"),
     ] {
         for &len in &[1usize, 32, 64, 65, 200] {
-            let name: &'static str = Box::leak(format!("raw/{label}/len{len}").into_boxed_str());
-            let mut s = spec(name, pipeline, Raw, "test", 0);
+            let mut s = spec(&format!("raw/{label}/len{len}"), pipeline, Raw, "test", 0);
             s.length = Some(len);
             v.push(s);
         }
@@ -237,7 +240,7 @@ fn compute(spec: &Spec) -> Vector {
     };
 
     Vector {
-        name: spec.name.to_string(),
+        name: spec.name.clone(),
         pipeline: spec.pipeline.as_str().to_string(),
         profile: spec.profile.as_str().to_string(),
         purpose: spec.purpose.to_string(),
