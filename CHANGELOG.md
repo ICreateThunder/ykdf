@@ -7,6 +7,19 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 
 ## [Unreleased]
 
+### Added
+
+- `ROADMAP.md` documenting project direction and the conformance-gated 1.0.0.
+- `docs/assurance-case.md`: a structured security assurance case (trust
+  boundaries, sub-claims with evidence, secure-design principles, countered
+  weaknesses).
+- README "Security and quality achievements" section and the OpenSSF Best
+  Practices badge.
+- CONTRIBUTING "Coding Standards" section.
+- SECURITY.md: explicit vulnerability response process and reporter credit policy.
+
+These close the documentation gaps for the OpenSSF Best Practices Silver level.
+
 ## [0.1.0] - 2026-06-20
 
 First release. The v1 derivation format is frozen and specified

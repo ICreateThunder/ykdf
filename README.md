@@ -2,12 +2,23 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPL_v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ICreateThunder/ykdf/badge)](https://scorecard.dev/viewer/?uri=github.com/ICreateThunder/ykdf)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13313/badge)](https://www.bestpractices.dev/projects/13313)
 
 A minimal, extensible framework for deterministically deriving cryptographic keys from a hardware root of trust (YubiKey 5 series). Supports WireGuard, Ed25519, ML-KEM (post-quantum), age identities, and arbitrary future key types.
 
 **Status:** Core library, YubiKey transport, and Linux CLI implemented
 
 **Specification:** the byte-level v1 derivation format is defined in [docs/SPEC.md](docs/SPEC.md), with language-neutral golden test vectors in [vectors/v1.json](vectors/v1.json) (the cross-platform conformance suite).
+
+## Security and quality achievements
+
+- **Released:** 0.1.0, with GPG-signed tags and keyless [cosign](https://www.sigstore.dev/) signatures on every artifact.
+- **OpenSSF Best Practices:** Passing badge (working toward Silver); see the badges above.
+- **Frozen, specified format:** byte-level [SPEC](docs/SPEC.md) plus golden vectors, cross-checked against the independent `hkdf` crate.
+- **Tested:** ~96% region coverage, property tests for the security-critical length-binding invariant, fuzzing ([cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz)), and Miri (undefined-behaviour) checks in CI.
+- **Side-channel measured:** a [dudect](https://github.com/oreparaz/dudect) timing rig shows no measurable secret-dependent timing in extract/derive.
+- **Memory-safe:** `unsafe` forbidden workspace-wide.
+- **Assurance case:** the security argument and its evidence are written up in [docs/assurance-case.md](docs/assurance-case.md).
 
 ## Verifying a release
 

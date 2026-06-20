@@ -13,11 +13,31 @@
 
 **Fallback:** robert@shalders.co.uk (PGP-encrypted)
 
+### Response process
+
+Once a report is received, the maintainer follows this process:
+
+1. **Acknowledge** the report within 48 hours.
+2. **Assess** validity and severity within 5 business days, and confirm or
+   decline the report to the reporter.
+3. **Fix** confirmed issues on a private branch, with a regression test where
+   feasible.
+4. **Disclose** in coordination with the reporter, by default within 90 days:
+   publish a fix, a GitHub Security Advisory, and a CHANGELOG / release-note
+   entry.
+5. **Credit** the reporter (see below).
+
 ### Response Timeline
 
 - **48 hours** - acknowledgment
 - **5 business days** - initial assessment
 - **90 days** - coordinated disclosure
+
+### Credit
+
+Reporters are credited by name (or handle) in the GitHub Security Advisory,
+CHANGELOG, and release notes for any confirmed vulnerability, unless they ask to
+remain anonymous. We will honour a request for anonymity.
 
 ### PGP Key
 
