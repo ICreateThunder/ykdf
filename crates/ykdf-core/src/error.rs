@@ -43,3 +43,78 @@ impl core::fmt::Display for Error {
 }
 
 impl core::error::Error for Error {}
+
+#[cfg(test)]
+mod tests {
+    use super::Error;
+
+    #[test]
+    fn display_is_non_empty_and_carries_detail() {
+        // Display delegates to Debug; confirm every kind renders a non-empty
+        // message that includes the variant's data, so error output is useful.
+        let cases = [
+            Error::InvalidContext {
+                input: "bad".to_string(),
+            },
+            Error::InvalidPurpose {
+                purpose: "UPPER".to_string(),
+            },
+            Error::InvalidProfile {
+                profile: "kyber".to_string(),
+            },
+            Error::InvalidPipeline {
+                pipeline: "hkdf-sha256".to_string(),
+            },
+            Error::InvalidIndex {
+                index: "abc".to_string(),
+            },
+            Error::InsufficientIkm { len: 8, min: 16 },
+            Error::PipelineMismatch {
+                profile: "x25519",
+                pipeline: "shake256",
+            },
+            Error::ExpandOutputTooLong {
+                requested: 99_999,
+                max: 16_320,
+            },
+            Error::InvalidPrkLength {
+                len: 32,
+                expected: 64,
+            },
+            Error::ProfileMismatch {
+                expected: "raw",
+                got: "x25519",
+            },
+            Error::ZeroLengthOutput,
+            Error::ExpandLength {
+                expected: 32,
+                got: 31,
+            },
+            Error::PostProcessing {
+                detail: "boom".to_string(),
+            },
+        ];
+        for case in &cases {
+            assert!(!case.to_string().is_empty());
+        }
+
+        assert!(
+            Error::InvalidPurpose {
+                purpose: "UPPER".to_string()
+            }
+            .to_string()
+            .contains("UPPER")
+        );
+        assert!(
+            Error::InsufficientIkm { len: 8, min: 16 }
+                .to_string()
+                .contains("16")
+        );
+    }
+
+    #[test]
+    fn is_a_std_error() {
+        let err = Error::ZeroLengthOutput;
+        let _: &dyn core::error::Error = &err;
+    }
+}

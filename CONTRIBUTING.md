@@ -55,6 +55,29 @@ cargo build --workspace
 cargo test --workspace
 ```
 
+## Test Coverage
+
+We measure `ykdf-core` coverage with
+[`cargo-llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov); CI reports it on
+every change (informationally, not as a gate):
+
+```bash
+cargo install cargo-llvm-cov --locked   # once
+cargo llvm-cov --package ykdf-core --features argon2 --summary-only
+cargo llvm-cov --package ykdf-core --features argon2 --html   # detailed report
+```
+
+Aim to keep region coverage above ~95%. New behaviour should come with tests
+that cover both the happy path and the failure paths.
+
+The handful of intentionally-uncovered lines are **unreachable defensive
+arms**: `map_err` on operations that cannot fail given the crate's invariants
+(HMAC construction accepts any key length; the ML-KEM seed is length-checked
+before `Seed::try_from`; bech32 encoding of a fixed 32-byte key; Argon2 with the
+locked, always-valid parameters; the stretch descriptor never exceeds 255
+bytes). These are kept for safety but cannot be triggered through the public
+API, so they are not chased to 100%.
+
 ## What We Want
 
 - Bug fixes, tests, documentation
