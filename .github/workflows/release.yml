@@ -47,13 +47,13 @@ jobs:
           echo "ARCHIVE=${archive}" >> "$GITHUB_ENV"
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Sign artifact (keyless)
-        # Keyless signing via the workflow's GitHub OIDC identity; the
-        # signature and certificate are logged in the public Rekor
-        # transparency log. Verify with `cosign verify-blob` (see README).
+        # Keyless signing via the workflow's GitHub OIDC identity. Produces a
+        # Sigstore bundle (signature + certificate + Rekor entry) logged in the
+        # public transparency log. Verify with `cosign verify-blob --bundle`
+        # (see README).
         run: |
           cosign sign-blob --yes \
-            --output-signature "${ARCHIVE}.sig" \
-            --output-certificate "${ARCHIVE}.pem" \
+            --bundle "${ARCHIVE}.bundle" \
             "${ARCHIVE}"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -62,8 +62,7 @@ jobs:
             ykdf-*.tar.gz
             ykdf-*.tar.gz.sha256
             ykdf-*.tar.gz.sha512
-            ykdf-*.tar.gz.sig
-            ykdf-*.tar.gz.pem
+            ykdf-*.tar.gz.bundle
           retention-days: 1
 
   release:
