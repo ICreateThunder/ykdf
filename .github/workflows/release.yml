@@ -19,6 +19,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     outputs:
+      # NOTE: this single `hashes` output assumes a single-entry matrix. If more
+      # targets are ever added below, a matrix job's output is overwritten by the
+      # last entry, so provenance would cover only one artifact. When that
+      # happens, collect each target's hashes (e.g. upload per-target hash files
+      # and merge them in a separate non-matrix job) before feeding the SLSA
+      # generator. See the provenance job.
       hashes: ${{ steps.hash.outputs.hashes }}
     strategy:
       matrix:
