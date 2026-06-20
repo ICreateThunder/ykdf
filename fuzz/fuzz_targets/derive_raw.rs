@@ -20,9 +20,11 @@ fuzz_target!(|input: Input| {
     let Ok(ikm) = Ikm::new(input.ikm) else {
         return;
     };
-    // Bound the length to keep iterations fast while still crossing the
-    // 64-byte block boundary and exercising multi-block expansion.
-    let len = (input.len as usize % 4096) + 1;
+    // Length spans 1..=65536, covering the full HKDF range: values up to the
+    // 255*64 = 16320 maximum compute (crossing many block boundaries), and
+    // larger values exercise the `ExpandOutputTooLong` rejection path. Both
+    // must be handled without panicking.
+    let len = input.len as usize + 1;
 
     for pipeline in [Pipeline::HkdfSha512, Pipeline::HkdfSha3, Pipeline::Shake256] {
         let Ok(master) = extract(&ikm, pipeline) else {
