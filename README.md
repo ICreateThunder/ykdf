@@ -7,6 +7,8 @@ A minimal, extensible framework for deterministically deriving cryptographic key
 
 **Status:** Core library, YubiKey transport, and Linux CLI implemented
 
+**Specification:** the byte-level v1 derivation format is defined in [docs/SPEC.md](docs/SPEC.md), with language-neutral golden test vectors in [vectors/v1.json](vectors/v1.json) (the cross-platform conformance suite).
+
 ## Problem
 
 Modern systems require keys across many different cryptographic schemes - WireGuard (Curve25519), SSH/Git signing (Ed25519), post-quantum encryption (ML-KEM), file encryption (age/ChaCha20), and more. Managing these independently is fragile: keys get lost, backups diverge, and there's no unified trust anchor.

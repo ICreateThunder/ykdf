@@ -35,6 +35,8 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 - CLI: `--ikm-file` flag for testing without YubiKey hardware
 - CLI: `--layered` flag for PIV + HMAC combined entropy
 - CLI: `--passphrase` flag for Argon2id-stretched additional factor
+- `docs/SPEC.md`: byte-level specification of the v1 derivation format (the conformance contract)
+- Golden test vectors (`vectors/v1.json`): a language-neutral, cross-platform conformance suite covering every pipeline x profile, raw lengths, layered-style IKM, and a passphrase cascade; verified in CI and cross-checked against the independent `hkdf` crate
 
 ### Changed
 
