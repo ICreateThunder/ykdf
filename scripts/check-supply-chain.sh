@@ -9,4 +9,4 @@ need gitleaks    "install from https://github.com/gitleaks/gitleaks/releases or 
 
 echo "=== cargo audit ===";    cargo audit
 echo "=== cargo deny check ==="; cargo deny check
-echo "=== gitleaks dir ===";   gitleaks dir .
+echo "=== gitleaks dir ===";   gitleaks dir . -c .gitleaks.toml

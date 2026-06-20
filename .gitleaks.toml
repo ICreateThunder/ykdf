@@ -11,4 +11,6 @@ paths = [
   '''docs/security/.*\.asc''',
   '''testdata/.*\.pem''',
   '''fixtures/.*\.pem''',
+  # Deterministic public golden test vectors (hex, not secrets).
+  '''(?:^|/)vectors/.*\.json$''',
 ]
