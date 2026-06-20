@@ -5,9 +5,9 @@ members = [
   "crates/ykdf-yubikey",
   "apps/cli",
 ]
-# The fuzz crate needs nightly and is its own workspace; keep it out of the
-# stable build.
-exclude = ["fuzz"]
+# The fuzz and timing crates are manual tools with their own workspaces (fuzz
+# needs nightly; timing pulls dudect-bencher); keep them out of the stable build.
+exclude = ["fuzz", "timing"]
 
 [workspace.package]
 version = "0.1.0"
