@@ -16,7 +16,7 @@ module_name_repetitions = "allow"
 must_use_candidate = "allow"
 
 [dependencies]
-ykdf-core = { path = "../ykdf-core", version = "0.1.0" }
+ykdf-core = { path = "../ykdf-core", version = "0.1.1" }
 yubikey.workspace = true
 yubikey-hmac-otp.workspace = true
 p256.workspace = true
