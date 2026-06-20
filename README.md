@@ -9,6 +9,26 @@ A minimal, extensible framework for deterministically deriving cryptographic key
 
 **Specification:** the byte-level v1 derivation format is defined in [docs/SPEC.md](docs/SPEC.md), with language-neutral golden test vectors in [vectors/v1.json](vectors/v1.json) (the cross-platform conformance suite).
 
+## Verifying a release
+
+Release tags are GPG-signed (`git verify-tag vX.Y.Z`). Each release artifact
+ships with SHA-256/512 checksums and a [Sigstore](https://www.sigstore.dev/)
+keyless signature (`.sig` + `.pem`) produced by the release workflow's GitHub
+OIDC identity and logged in the public Rekor transparency log.
+
+```bash
+# Checksums
+sha256sum -c ykdf-vX.Y.Z-x86_64-linux.tar.gz.sha256
+
+# Signature (requires cosign)
+cosign verify-blob \
+  --certificate ykdf-vX.Y.Z-x86_64-linux.tar.gz.pem \
+  --signature ykdf-vX.Y.Z-x86_64-linux.tar.gz.sig \
+  --certificate-identity-regexp '^https://github.com/ICreateThunder/ykdf/\.github/workflows/release\.yml@' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ykdf-vX.Y.Z-x86_64-linux.tar.gz
+```
+
 ## Problem
 
 Modern systems require keys across many different cryptographic schemes - WireGuard (Curve25519), SSH/Git signing (Ed25519), post-quantum encryption (ML-KEM), file encryption (age/ChaCha20), and more. Managing these independently is fragile: keys get lost, backups diverge, and there's no unified trust anchor.
