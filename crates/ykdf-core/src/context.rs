@@ -296,6 +296,27 @@ mod tests {
     }
 
     #[test]
+    fn parse_rejects_disallowed_combination() {
+        // Valid pipeline and profile *names*, but the profile does not accept
+        // the pipeline -> PipelineMismatch (distinct from an unknown-name error).
+        assert!("ykdf:v1:shake256:x25519:test:0".parse::<Context>().is_err());
+        assert!(
+            "ykdf:v1:hkdf-sha512:mlkem768:test:0"
+                .parse::<Context>()
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn accessors_return_fields() {
+        let ctx = Context::new(Profile::Ed25519, "git-signing", 7).unwrap();
+        assert_eq!(ctx.profile(), Profile::Ed25519);
+        assert_eq!(ctx.pipeline(), Pipeline::HkdfSha512);
+        assert_eq!(ctx.purpose(), "git-signing");
+        assert_eq!(ctx.index(), 7);
+    }
+
+    #[test]
     fn parse_invalid_format() {
         assert!("not:enough:parts".parse::<Context>().is_err());
         assert!(

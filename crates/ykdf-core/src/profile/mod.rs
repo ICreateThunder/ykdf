@@ -166,3 +166,18 @@ pub fn post_process(profile: Profile, expanded: &ExpandedBytes) -> Result<Profil
         Profile::Raw => raw::post_process(expanded),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::take_fixed;
+    use crate::types::ExpandedBytes;
+
+    #[test]
+    fn take_fixed_enforces_exact_length() {
+        // The length guard rejects anything that is not exactly N bytes, so a
+        // wrong-length expand can never silently produce a truncated key.
+        assert!(take_fixed::<32>(&ExpandedBytes::new(vec![0u8; 31])).is_err());
+        assert!(take_fixed::<32>(&ExpandedBytes::new(vec![0u8; 33])).is_err());
+        assert!(take_fixed::<32>(&ExpandedBytes::new(vec![0u8; 32])).is_ok());
+    }
+}

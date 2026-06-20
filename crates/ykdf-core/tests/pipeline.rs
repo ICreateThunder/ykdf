@@ -1,5 +1,5 @@
 use ykdf_core::{
-    Context, Ikm, Pipeline, Profile, ProfileOutput, cascade, derive, derive_raw, extract,
+    Context, Ikm, Pipeline, Profile, ProfileOutput, cascade, derive, derive_raw, expand, extract,
 };
 
 /// Fixed test IKM simulating 32 bytes of ECDH output.
@@ -292,6 +292,44 @@ fn cascade_different_additional_ikm_differs() {
     let mk1 = cascade(&early, b"factor-a", Pipeline::HkdfSha512).unwrap();
     let mk2 = cascade(&early, b"factor-b", Pipeline::HkdfSha512).unwrap();
     assert_ne!(mk1.as_bytes(), mk2.as_bytes());
+}
+
+#[test]
+fn raw_derive_rejects_too_long() {
+    let ikm = test_ikm();
+    // The HKDF-Expand maximum is 255 * 64 = 16320 bytes for both HKDF
+    // pipelines; the SHAKE sponge has no such limit.
+    for pipeline in [Pipeline::HkdfSha512, Pipeline::HkdfSha3] {
+        let mk = extract(&ikm, pipeline).unwrap();
+        let ctx = Context::with_pipeline(Profile::Raw, pipeline, "test", 0).unwrap();
+        assert!(derive_raw(&mk, &ctx, 16320).is_ok());
+        assert!(derive_raw(&mk, &ctx, 16321).is_err());
+    }
+}
+
+#[test]
+fn cascade_over_sha3_pipeline() {
+    let ikm = test_ikm();
+    let early = extract(&ikm, Pipeline::HkdfSha3).unwrap();
+    let a = cascade(&early, b"second-factor", Pipeline::HkdfSha3).unwrap();
+    let b = cascade(&early, b"second-factor", Pipeline::HkdfSha3).unwrap();
+    assert_eq!(a.as_bytes(), b.as_bytes());
+    assert_ne!(early.as_bytes(), a.as_bytes());
+}
+
+#[test]
+fn expanded_bytes_len_and_is_empty() {
+    let ikm = test_ikm();
+    let mk = extract(&ikm, Pipeline::HkdfSha512).unwrap();
+    let ctx = Context::new(Profile::Raw, "test", 0).unwrap();
+
+    let ten = expand(&mk, &ctx, 10).unwrap();
+    assert_eq!(ten.len(), 10);
+    assert!(!ten.is_empty());
+
+    let none = expand(&mk, &ctx, 0).unwrap();
+    assert_eq!(none.len(), 0);
+    assert!(none.is_empty());
 }
 
 #[test]

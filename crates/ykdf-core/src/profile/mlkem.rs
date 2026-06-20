@@ -106,4 +106,12 @@ mod tests {
         let shared_b = dk.decapsulate(&ciphertext);
         assert_eq!(shared_a, shared_b);
     }
+
+    #[test]
+    fn rejects_wrong_seed_length() {
+        // ML-KEM keygen needs a 64-byte seed; a wrong-length expand is rejected
+        // rather than producing a malformed key.
+        assert!(post_process_768(&ExpandedBytes::new(vec![0u8; 32])).is_err());
+        assert!(post_process_768(&ExpandedBytes::new(vec![0u8; 65])).is_err());
+    }
 }
