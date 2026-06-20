@@ -13,7 +13,7 @@ A minimal, extensible framework for deterministically deriving cryptographic key
 
 Release tags are GPG-signed (`git verify-tag vX.Y.Z`). Each release artifact
 ships with SHA-256/512 checksums and a [Sigstore](https://www.sigstore.dev/)
-keyless signature (`.sig` + `.pem`) produced by the release workflow's GitHub
+keyless signature bundle (`.bundle`) produced by the release workflow's GitHub
 OIDC identity and logged in the public Rekor transparency log.
 
 ```bash
@@ -22,8 +22,7 @@ sha256sum -c ykdf-vX.Y.Z-x86_64-linux.tar.gz.sha256
 
 # Signature (requires cosign)
 cosign verify-blob \
-  --certificate ykdf-vX.Y.Z-x86_64-linux.tar.gz.pem \
-  --signature ykdf-vX.Y.Z-x86_64-linux.tar.gz.sig \
+  --bundle ykdf-vX.Y.Z-x86_64-linux.tar.gz.bundle \
   --certificate-identity-regexp '^https://github.com/ICreateThunder/ykdf/\.github/workflows/release\.yml@' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   ykdf-vX.Y.Z-x86_64-linux.tar.gz
