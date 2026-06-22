@@ -1996,7 +1996,7 @@ dependencies = [
 name = "ykdf-yubikey"
 version = "0.1.1"
 dependencies = [
- "getrandom 0.2.17",
+ "getrandom 0.4.2",
  "p256",
  "rand_core 0.6.4",
  "x509-cert",
