@@ -47,16 +47,21 @@ because it is interrupted before releasing, it leaves the interface driverless
 (no hidraw node) until the key is re-plugged. `ykman` reads the same factor over
 **hidraw** (the kernel driver) with no detach and no hang.
 
-Recommended direction: replace the `rusb`/libusb HMAC path with a hidraw /
-`hidapi` implementation. This:
+Implemented: `ykdf-yubikey` now talks to the OTP HID over the Linux `hidraw`
+interface with a small in-tree implementation of the OTP frame protocol (both
+the challenge-response read and slot-2 programming), replacing `yubikey-hmac-otp`.
+This:
 
-- fixes the Linux hang and the driver-corruption-on-failure,
-- is cross-platform (`hidapi` covers Linux hidraw, the Windows native HID API,
-  and macOS), which also removes the original libusb Windows blocker, and
-- drops the `rusb` / `libusb1-sys` dependency.
+- fixes the Linux hang and the driver-corruption-on-failure (no kernel-driver
+  detach), and bounds the status polling so it errors instead of blocking,
+- drops the `rusb` / `libusb1-sys` dependency, and
+- is structured so the Windows native HID API and macOS can be added later
+  behind the same interface (which would also clear the original libusb Windows
+  blocker).
 
 It still requires hidraw access permission (a udev / `uaccess` rule) for non-root
-use, but the failure mode becomes a clean error rather than a hang.
+use, but the failure mode is now a clean error rather than a hang. Verified on
+hardware: the hidraw read reproduces the same HMAC as `ykman`.
 
 ## gpg / scdaemon contention (CCID)
 

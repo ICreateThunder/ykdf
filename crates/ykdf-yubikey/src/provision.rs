@@ -19,10 +19,6 @@ use yubikey::YubiKey;
 use yubikey::certificate::Certificate;
 use yubikey::piv::{self, AlgorithmId, SlotId};
 use yubikey::{MgmKey, PinPolicy, TouchPolicy};
-use yubikey_hmac_otp::Yubico;
-use yubikey_hmac_otp::config::{Command, Config, Mode, Slot};
-use yubikey_hmac_otp::configure::DeviceModeConfig;
-use yubikey_hmac_otp::hmacmode::HmacKey;
 use zeroize::Zeroizing;
 
 use crate::error::Error;
@@ -272,27 +268,7 @@ pub fn program_hmac_slot2(
     secret: &[u8; HMAC_SECRET_LEN],
     require_touch: bool,
 ) -> crate::Result<()> {
-    let mut yubico = Yubico::new();
-    let device = yubico
-        .find_yubikey()
-        .map_err(|e| Error::HmacProgramFailed {
-            detail: e.to_string(),
-        })?;
-
-    let config = Config::new_from(device)
-        .set_slot(Slot::Slot2)
-        .set_mode(Mode::Sha1)
-        .set_command(Command::Configuration2);
-
-    let mut device_config = DeviceModeConfig::default();
-    let hmac_key = HmacKey::from_slice(secret);
-    device_config.challenge_response_hmac(&hmac_key, false, require_touch);
-
-    yubico
-        .write_config(config, &mut device_config)
-        .map_err(|e| Error::HmacProgramFailed {
-            detail: e.to_string(),
-        })
+    crate::hmac::program_slot2_hmac(secret, require_touch)
 }
 
 #[cfg(test)]

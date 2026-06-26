@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 
 ## [Unreleased]
 
+### Changed
+
+- `ykdf-yubikey`: the HMAC-SHA1 challenge-response factor (and slot-2
+  programming) now talk to the YubiKey over the Linux `hidraw` interface using a
+  small in-tree implementation of the OTP frame protocol, replacing the
+  `yubikey-hmac-otp` crate. This drops the `rusb` / `libusb1-sys` dependency,
+  fixes a hang (libusb detached the kernel HID driver and left the interface
+  broken), and fails fast with a clear error instead of blocking. The HMAC
+  factor is HID-only over USB; see `docs/transport-notes.md`. Other platforms
+  are not yet implemented (the code is structured to add them behind the same
+  interface).
+
 ## [0.2.0] - 2026-06-26
 
 ### Added

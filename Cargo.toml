@@ -38,5 +38,4 @@ ml-kem = "0.3"
 ml-dsa = "0.1"
 bech32 = "0.12"
 yubikey = { version = "0.8", features = ["untested"] }
-yubikey-hmac-otp = "0.10"
 p256 = "0.13"
