@@ -3,6 +3,7 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPL_v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ICreateThunder/ykdf/badge)](https://scorecard.dev/viewer/?uri=github.com/ICreateThunder/ykdf)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13313/badge)](https://www.bestpractices.dev/projects/13313)
+[![dependency status](https://deps.rs/repo/github/ICreateThunder/ykdf/status.svg)](https://deps.rs/repo/github/ICreateThunder/ykdf)
 
 A minimal, extensible framework for deterministically deriving cryptographic keys from a hardware root of trust (YubiKey 5 series). Supports WireGuard, Ed25519, ML-KEM (post-quantum), age identities, and arbitrary future key types.
 
