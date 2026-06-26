@@ -92,9 +92,16 @@ pub extern "system" fn Java_app_ykdf_Native_derive<'local>(
     index: jint,
 ) -> jbyteArray {
     match run(&mut env, &ikm, &pipeline, &profile, &purpose, index) {
-        Ok(bytes) => env
-            .byte_array_from_slice(&bytes)
-            .map_or(std::ptr::null_mut(), JByteArray::into_raw),
+        Ok(mut bytes) => {
+            // Copy into the JVM, then wipe this last native-side copy. The
+            // derived secret would otherwise sit in freed heap after drop,
+            // escaping the ZeroizeOnDrop chain of Ikm/MasterKey/ProfileOutput.
+            let array = env
+                .byte_array_from_slice(&bytes)
+                .map_or(std::ptr::null_mut(), JByteArray::into_raw);
+            bytes.zeroize();
+            array
+        }
         Err(msg) => {
             // Leaves a pending exception on the JVM; the returned null is
             // ignored once an exception is set.

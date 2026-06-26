@@ -84,7 +84,10 @@ class MainActivity : ComponentActivity() {
             // Empty pipeline => the profile's default, matching the CLI.
             val secret = Native.derive(ikm, "", profile.value.trim(), purpose.value.trim(), 0)
             ikm.fill(0)
-            postResult("Derived ${secret.size} bytes", bytesToHex(secret))
+            val hex = bytesToHex(secret)
+            val size = secret.size
+            secret.fill(0)
+            postResult("Derived $size bytes", hex)
         } catch (e: Exception) {
             postResult("Error: ${e.message}", "")
         } finally {
