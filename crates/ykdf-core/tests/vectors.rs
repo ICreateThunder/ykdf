@@ -91,6 +91,10 @@ struct Output {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     mlkem_dk_hex: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    mldsa_vk_hex: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mldsa_sk_hex: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     raw_hex: Option<String>,
 }
 
@@ -127,7 +131,10 @@ fn spec(
 
 fn matrix() -> Vec<Spec> {
     use Pipeline::{HkdfSha3, HkdfSha512, Shake256};
-    use Profile::{AgeX25519, Ed25519, MlKem512, MlKem768, MlKem1024, Raw, Symmetric, X25519};
+    use Profile::{
+        AgeX25519, Ed25519, MlDsa44, MlDsa65, MlDsa87, MlKem512, MlKem768, MlKem1024, Raw,
+        Symmetric, X25519,
+    };
 
     let mut v = vec![
         // Classical profiles over their default pipeline (HKDF-SHA512).
@@ -144,6 +151,10 @@ fn matrix() -> Vec<Spec> {
         spec("mlkem512/shake256", Shake256, MlKem512, "test", 0),
         spec("mlkem768/shake256", Shake256, MlKem768, "test", 0),
         spec("mlkem1024/shake256", Shake256, MlKem1024, "test", 0),
+        // ML-DSA profiles (SHAKE256 only).
+        spec("mldsa44/shake256", Shake256, MlDsa44, "test", 0),
+        spec("mldsa65/shake256", Shake256, MlDsa65, "test", 0),
+        spec("mldsa87/shake256", Shake256, MlDsa87, "test", 0),
         // Domain separation: different purpose and index must change output.
         spec(
             "x25519/hkdf-sha512/wg-home-idx1",
@@ -232,6 +243,11 @@ fn compute(spec: &Spec) -> Vector {
         ProfileOutput::MlKemKeypair(kp) => Output {
             mlkem_ek_hex: Some(hex::encode(&kp.encapsulation_key)),
             mlkem_dk_hex: Some(hex::encode(&kp.decapsulation_key)),
+            ..Output::default()
+        },
+        ProfileOutput::MlDsaKeypair(kp) => Output {
+            mldsa_vk_hex: Some(hex::encode(&kp.verifying_key)),
+            mldsa_sk_hex: Some(hex::encode(&kp.signing_key)),
             ..Output::default()
         },
         ProfileOutput::Raw(r) => Output {

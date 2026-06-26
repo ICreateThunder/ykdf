@@ -172,6 +172,9 @@ pub enum ProfileArg {
     Mlkem512,
     Mlkem768,
     Mlkem1024,
+    Mldsa44,
+    Mldsa65,
+    Mldsa87,
     Raw,
 }
 
@@ -185,6 +188,9 @@ impl From<ProfileArg> for Profile {
             ProfileArg::Mlkem512 => Self::MlKem512,
             ProfileArg::Mlkem768 => Self::MlKem768,
             ProfileArg::Mlkem1024 => Self::MlKem1024,
+            ProfileArg::Mldsa44 => Self::MlDsa44,
+            ProfileArg::Mldsa65 => Self::MlDsa65,
+            ProfileArg::Mldsa87 => Self::MlDsa87,
             ProfileArg::Raw => Self::Raw,
         }
     }

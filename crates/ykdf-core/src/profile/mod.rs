@@ -1,5 +1,6 @@
 pub mod age;
 pub mod ed25519;
+pub mod mldsa;
 pub mod mlkem;
 pub mod raw;
 pub mod symmetric;
@@ -50,6 +51,12 @@ pub enum Profile {
     MlKem768,
     /// ML-KEM-1024 keypair (FIPS 203).
     MlKem1024,
+    /// ML-DSA-44 keypair (FIPS 204).
+    MlDsa44,
+    /// ML-DSA-65 keypair (FIPS 204).
+    MlDsa65,
+    /// ML-DSA-87 keypair (FIPS 204).
+    MlDsa87,
     /// Raw expanded bytes of caller-chosen length.
     Raw,
 }
@@ -58,7 +65,12 @@ impl Profile {
     /// The pipeline this profile selects unless overridden.
     pub const fn default_pipeline(&self) -> Pipeline {
         match self {
-            Self::MlKem512 | Self::MlKem768 | Self::MlKem1024 => Pipeline::Shake256,
+            Self::MlKem512
+            | Self::MlKem768
+            | Self::MlKem1024
+            | Self::MlDsa44
+            | Self::MlDsa65
+            | Self::MlDsa87 => Pipeline::Shake256,
             Self::X25519 | Self::Ed25519 | Self::AgeX25519 | Self::Symmetric | Self::Raw => {
                 Pipeline::HkdfSha512
             }
@@ -71,7 +83,12 @@ impl Profile {
     /// require the SHAKE256 sponge. `Raw` accepts any pipeline.
     pub fn accepts(&self, pipeline: Pipeline) -> bool {
         match self {
-            Self::MlKem512 | Self::MlKem768 | Self::MlKem1024 => pipeline == Pipeline::Shake256,
+            Self::MlKem512
+            | Self::MlKem768
+            | Self::MlKem1024
+            | Self::MlDsa44
+            | Self::MlDsa65
+            | Self::MlDsa87 => pipeline == Pipeline::Shake256,
             Self::X25519 | Self::Ed25519 | Self::AgeX25519 | Self::Symmetric => {
                 matches!(pipeline, Pipeline::HkdfSha512 | Pipeline::HkdfSha3)
             }
@@ -83,7 +100,15 @@ impl Profile {
     pub const fn expand_len(&self) -> usize {
         match self {
             Self::MlKem512 | Self::MlKem768 | Self::MlKem1024 => 64,
-            Self::X25519 | Self::Ed25519 | Self::AgeX25519 | Self::Symmetric | Self::Raw => 32,
+            // ML-DSA KeyGen takes a single 32-byte seed (xi), unlike ML-KEM's 64.
+            Self::MlDsa44
+            | Self::MlDsa65
+            | Self::MlDsa87
+            | Self::X25519
+            | Self::Ed25519
+            | Self::AgeX25519
+            | Self::Symmetric
+            | Self::Raw => 32,
         }
     }
 
@@ -97,6 +122,9 @@ impl Profile {
             "mlkem512" => Some(Self::MlKem512),
             "mlkem768" => Some(Self::MlKem768),
             "mlkem1024" => Some(Self::MlKem1024),
+            "mldsa44" => Some(Self::MlDsa44),
+            "mldsa65" => Some(Self::MlDsa65),
+            "mldsa87" => Some(Self::MlDsa87),
             "raw" => Some(Self::Raw),
             _ => None,
         }
@@ -112,6 +140,9 @@ impl Profile {
             Self::MlKem512 => "mlkem512",
             Self::MlKem768 => "mlkem768",
             Self::MlKem1024 => "mlkem1024",
+            Self::MlDsa44 => "mldsa44",
+            Self::MlDsa65 => "mldsa65",
+            Self::MlDsa87 => "mldsa87",
             Self::Raw => "raw",
         }
     }
@@ -132,6 +163,8 @@ pub enum ProfileOutput {
     Ed25519Seed(Ed25519SeedBytes),
     /// ML-KEM keypair as (encapsulation key, decapsulation key) bytes.
     MlKemKeypair(MlKemKeypairBytes),
+    /// ML-DSA keypair as (verifying key, signing key) bytes.
+    MlDsaKeypair(MlDsaKeypairBytes),
     /// age identity string.
     AgeIdentity(AgeIdentityBytes),
     /// Raw bytes of arbitrary length.
@@ -153,6 +186,15 @@ pub struct MlKemKeypairBytes {
     pub encapsulation_key: Vec<u8>,
     /// Secret decapsulation key.
     pub decapsulation_key: Vec<u8>,
+}
+
+/// An ML-DSA keypair in its canonical byte encodings.
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct MlDsaKeypairBytes {
+    /// Public verifying key.
+    pub verifying_key: Vec<u8>,
+    /// Secret signing key, as its 32-byte seed.
+    pub signing_key: Vec<u8>,
 }
 
 /// An age X25519 identity: the raw key plus its encoded form.
@@ -182,6 +224,9 @@ pub fn post_process(profile: Profile, expanded: &ExpandedBytes) -> Result<Profil
         Profile::MlKem512 => mlkem::post_process_512(expanded),
         Profile::MlKem768 => mlkem::post_process_768(expanded),
         Profile::MlKem1024 => mlkem::post_process_1024(expanded),
+        Profile::MlDsa44 => mldsa::post_process_44(expanded),
+        Profile::MlDsa65 => mldsa::post_process_65(expanded),
+        Profile::MlDsa87 => mldsa::post_process_87(expanded),
         Profile::Raw => raw::post_process(expanded),
     }
 }

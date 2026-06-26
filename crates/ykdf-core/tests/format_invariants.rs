@@ -20,7 +20,7 @@ use ykdf_core::{Context, Pipeline, Profile};
 /// Every `Profile` variant. The exhaustiveness guard below fails to compile
 /// if a variant is added without being listed here, forcing the invariant
 /// tables to be revisited.
-const ALL_PROFILES: [Profile; 8] = [
+const ALL_PROFILES: [Profile; 11] = [
     Profile::X25519,
     Profile::Ed25519,
     Profile::AgeX25519,
@@ -28,6 +28,9 @@ const ALL_PROFILES: [Profile; 8] = [
     Profile::MlKem512,
     Profile::MlKem768,
     Profile::MlKem1024,
+    Profile::MlDsa44,
+    Profile::MlDsa65,
+    Profile::MlDsa87,
     Profile::Raw,
 ];
 
@@ -46,6 +49,9 @@ const fn assert_profile_listed(profile: Profile) {
         | Profile::MlKem512
         | Profile::MlKem768
         | Profile::MlKem1024
+        | Profile::MlDsa44
+        | Profile::MlDsa65
+        | Profile::MlDsa87
         | Profile::Raw => {}
     }
 }
@@ -61,7 +67,7 @@ const fn assert_pipeline_listed(pipeline: Pipeline) {
 fn variant_arrays_are_exhaustive() {
     // Length pins catch a variant added without updating the arrays; the
     // const guards catch a variant added without updating the match arms.
-    assert_eq!(ALL_PROFILES.len(), 8, "ALL_PROFILES is not exhaustive");
+    assert_eq!(ALL_PROFILES.len(), 11, "ALL_PROFILES is not exhaustive");
     assert_eq!(ALL_PIPELINES.len(), 3, "ALL_PIPELINES is not exhaustive");
     for p in ALL_PROFILES {
         assert_profile_listed(p);
@@ -84,6 +90,9 @@ fn default_pipeline_truth_table() {
         (Profile::MlKem512, Pipeline::Shake256),
         (Profile::MlKem768, Pipeline::Shake256),
         (Profile::MlKem1024, Pipeline::Shake256),
+        (Profile::MlDsa44, Pipeline::Shake256),
+        (Profile::MlDsa65, Pipeline::Shake256),
+        (Profile::MlDsa87, Pipeline::Shake256),
         (Profile::Raw, Pipeline::HkdfSha512),
     ];
     // Every profile must appear exactly once in the expected table.
@@ -107,7 +116,7 @@ fn default_pipeline_truth_table() {
 #[test]
 fn accept_policy_truth_table() {
     // (profile, [accepts HkdfSha512, accepts HkdfSha3, accepts Shake256])
-    let expected: [(Profile, [bool; 3]); 8] = [
+    let expected: [(Profile, [bool; 3]); 11] = [
         (Profile::X25519, [true, true, false]),
         (Profile::Ed25519, [true, true, false]),
         (Profile::AgeX25519, [true, true, false]),
@@ -115,6 +124,9 @@ fn accept_policy_truth_table() {
         (Profile::MlKem512, [false, false, true]),
         (Profile::MlKem768, [false, false, true]),
         (Profile::MlKem1024, [false, false, true]),
+        (Profile::MlDsa44, [false, false, true]),
+        (Profile::MlDsa65, [false, false, true]),
+        (Profile::MlDsa87, [false, false, true]),
         (Profile::Raw, [true, true, true]),
     ];
     assert_eq!(expected.len(), ALL_PROFILES.len());
@@ -142,6 +154,9 @@ fn profile_wire_vocabulary() {
         (Profile::MlKem512, "mlkem512"),
         (Profile::MlKem768, "mlkem768"),
         (Profile::MlKem1024, "mlkem1024"),
+        (Profile::MlDsa44, "mldsa44"),
+        (Profile::MlDsa65, "mldsa65"),
+        (Profile::MlDsa87, "mldsa87"),
         (Profile::Raw, "raw"),
     ];
     assert_eq!(expected.len(), ALL_PROFILES.len());
@@ -226,6 +241,9 @@ fn expand_len_truth_table() {
         (Profile::MlKem512, 64),
         (Profile::MlKem768, 64),
         (Profile::MlKem1024, 64),
+        (Profile::MlDsa44, 32),
+        (Profile::MlDsa65, 32),
+        (Profile::MlDsa87, 32),
         (Profile::Raw, 32),
     ];
     assert_eq!(expected.len(), ALL_PROFILES.len());

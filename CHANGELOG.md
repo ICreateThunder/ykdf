@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 
 ## [Unreleased]
 
+### Added
+
+- ML-DSA (FIPS 204) signature profiles `mldsa44`, `mldsa65`, and `mldsa87`,
+  deterministically derived from a 32-byte seed over the SHAKE256 pipeline.
+  Output is the encoded verifying key plus the 32-byte signing seed; golden
+  vectors and a sign/verify interop check are included. Additive to the v1
+  format (new profile labels; existing derivations are unchanged).
+
 ## [0.1.1] - 2026-06-20
 
 Release-pipeline and documentation patch; no library or API changes.

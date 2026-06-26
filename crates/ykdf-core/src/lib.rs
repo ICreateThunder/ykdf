@@ -33,8 +33,8 @@ pub use self::expand::expand;
 pub use self::extract::{cascade, extract};
 pub use self::pipeline::Pipeline;
 pub use self::profile::{
-    AgeIdentityBytes, Ed25519SeedBytes, MlKemKeypairBytes, Profile, ProfileOutput, RawBytes,
-    SecretKeyBytes,
+    AgeIdentityBytes, Ed25519SeedBytes, MlDsaKeypairBytes, MlKemKeypairBytes, Profile,
+    ProfileOutput, RawBytes, SecretKeyBytes,
 };
 pub use self::types::{ExpandedBytes, Ikm, MIN_IKM_LEN, MasterKey};
 
