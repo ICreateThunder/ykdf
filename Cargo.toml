@@ -3,6 +3,7 @@ resolver = "3"
 members = [
   "crates/ykdf-core",
   "crates/ykdf-yubikey",
+  "crates/ykdf-jni",
   "apps/cli",
 ]
 # The fuzz and timing crates are manual tools with their own workspaces (fuzz

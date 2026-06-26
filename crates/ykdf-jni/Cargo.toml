@@ -1,0 +1,29 @@
+[package]
+name = "ykdf-jni"
+description = "JNI bindings exposing ykdf-core key derivation to Android/Kotlin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+# cdylib: the loadable .so the Android app dlopen's via System.loadLibrary.
+# rlib: lets the in-process unit tests link the pure-Rust helper directly.
+crate-type = ["cdylib", "rlib"]
+
+# This crate cannot use the workspace lints: they `forbid` unsafe_code, but a
+# JNI entry point requires `#[unsafe(no_mangle)] extern "system"`. We keep the
+# same clippy posture and confine `unsafe` to the marshalling shim instead.
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+
+[dependencies]
+ykdf-core = { path = "../ykdf-core", version = "0.2.0", features = ["argon2"] }
+jni = "0.21"
+zeroize.workspace = true
