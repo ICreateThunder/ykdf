@@ -12,24 +12,24 @@
 //!   converts the Java arguments, calls [`derive_secret`], wipes the input copy
 //!   it pulled across the boundary, and returns a `byte[]` (or throws).
 
-use ykdf_core::{Context, Ikm, ProfileOutput, derive, extract};
+use ykdf_core::{Context, Ikm, Pipeline, Profile, ProfileOutput, derive, extract};
 
 /// Run a YKDF derivation from raw input key material.
 ///
-/// `pipeline`, `profile`, and `purpose` are the self-describing context fields
-/// (see `docs/SPEC.md`). They are assembled into the canonical context string
-/// `ykdf:v1:<pipeline>:<profile>:<purpose>:<index>` and parsed, so an invalid
-/// or disallowed profile/pipeline combination is rejected exactly as the CLI
-/// rejects it.
+/// `profile` and `purpose` are the self-describing context fields (see
+/// `docs/SPEC.md`). `pipeline` may be empty, in which case the profile's
+/// default pipeline is used (the common case); otherwise it is an explicit
+/// override that the profile must accept. An invalid or disallowed combination
+/// is rejected exactly as the CLI rejects it.
 ///
 /// Returns the profile's primary secret bytes: the same bytes the CLI emits in
 /// `--format binary`.
 ///
 /// # Errors
 ///
-/// Returns a human-readable message if the IKM is too short, the context is
-/// invalid, the profile/pipeline combination is not accepted, or derivation
-/// fails.
+/// Returns a human-readable message if the profile or pipeline label is
+/// unknown, the IKM is too short, the profile/pipeline combination is not
+/// accepted, or derivation fails.
 pub fn derive_secret(
     ikm: &[u8],
     pipeline: &str,
@@ -37,8 +37,15 @@ pub fn derive_secret(
     purpose: &str,
     index: u32,
 ) -> Result<Vec<u8>, String> {
-    let ctx_str = format!("ykdf:v1:{pipeline}:{profile}:{purpose}:{index}");
-    let context: Context = ctx_str.parse().map_err(|e| format!("{e}"))?;
+    let profile =
+        Profile::from_str_label(profile).ok_or_else(|| format!("unknown profile: {profile}"))?;
+    let context = if pipeline.is_empty() {
+        Context::new(profile, purpose, index).map_err(|e| format!("{e}"))?
+    } else {
+        let pipeline = Pipeline::from_str_label(pipeline)
+            .ok_or_else(|| format!("unknown pipeline: {pipeline}"))?;
+        Context::with_pipeline(profile, pipeline, purpose, index).map_err(|e| format!("{e}"))?
+    };
 
     let ikm = Ikm::new(ikm.to_vec()).map_err(|e| format!("{e}"))?;
     let master_key = extract(&ikm, context.pipeline()).map_err(|e| format!("{e}"))?;
@@ -142,6 +149,16 @@ mod tests {
             0x42, 0xa5, 0x38, 0x03,
         ];
         assert_eq!(out, expected);
+    }
+
+    #[test]
+    fn empty_pipeline_uses_profile_default() {
+        // symmetric's default pipeline is hkdf-sha512, so an empty pipeline must
+        // reproduce the same golden vector as the explicit label above.
+        let ikm: Vec<u8> = (0u8..32).collect();
+        let explicit = derive_secret(&ikm, "hkdf-sha512", "symmetric", "test", 0).unwrap();
+        let default = derive_secret(&ikm, "", "symmetric", "test", 0).unwrap();
+        assert_eq!(default, explicit);
     }
 
     #[test]

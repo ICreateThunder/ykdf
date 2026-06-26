@@ -1,116 +1,157 @@
 package app.ykdf
 
+import android.nfc.NfcAdapter
+import android.nfc.Tag
+import android.nfc.tech.IsoDep
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import app.ykdf.nfc.YubiKeyNfc
 
 /**
- * Spike UI: prove the full chain Compose -> JNI -> ykdf-core -> bytes.
+ * Spike UI: tap a YubiKey, read the secret over NFC (custom APDU handler), run
+ * the derivation in ykdf-core via JNI, and show the result.
  *
- * For now the input key material is typed as hex (the same 00..1f vector the
- * golden tests pin). The NFC tap that will supply this material from a YubiKey
- * is stubbed below ([deriveFromNfc]); wiring it is the remaining hardware step.
+ * The derived bytes are provably the same as the CLI's for the same device, so
+ * this is the on-device half of the shared-derivation acceptance test.
  */
 class MainActivity : ComponentActivity() {
+    private var nfcAdapter: NfcAdapter? = null
+
+    // State shared between Compose and the NFC reader callback (a binder thread).
+    private val pin = mutableStateOf("")
+    private val profile = mutableStateOf("x25519")
+    private val purpose = mutableStateOf("wg-home")
+    private val layered = mutableStateOf(false)
+    private val status = mutableStateOf("Tap your YubiKey to the back of the phone")
+    private val output = mutableStateOf("")
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        nfcAdapter = NfcAdapter.getDefaultAdapter(this)
         setContent {
             MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    DeriveScreen()
+                Surface(modifier = Modifier.fillMaxWidth()) {
+                    DeriveScreen(pin, profile, purpose, layered, status, output)
                 }
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        val flags = NfcAdapter.FLAG_READER_NFC_A or
+            NfcAdapter.FLAG_READER_NFC_B or
+            NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK
+        nfcAdapter?.enableReaderMode(this, ::onTag, flags, null)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        nfcAdapter?.disableReaderMode(this)
+    }
+
+    /** Reader-mode callback. Runs off the UI thread, so blocking I/O is fine. */
+    private fun onTag(tag: Tag) {
+        val isoDep = IsoDep.get(tag)
+        if (isoDep == null) {
+            post("Not an ISO-DEP tag (is this a YubiKey 5 NFC?)")
+            return
+        }
+        post("Reading YubiKey...")
+        val pinBytes = pin.value.toByteArray(Charsets.US_ASCII)
+        try {
+            val ikm = YubiKeyNfc.deriveIkm(isoDep, pinBytes, layered.value)
+            // Empty pipeline => the profile's default, matching the CLI.
+            val secret = Native.derive(ikm, "", profile.value.trim(), purpose.value.trim(), 0)
+            ikm.fill(0)
+            postResult("Derived ${secret.size} bytes", bytesToHex(secret))
+        } catch (e: Exception) {
+            postResult("Error: ${e.message}", "")
+        } finally {
+            pinBytes.fill(0)
+            runCatching { isoDep.close() }
+        }
+    }
+
+    private fun post(message: String) = runOnUiThread { status.value = message }
+
+    private fun postResult(message: String, hex: String) = runOnUiThread {
+        status.value = message
+        output.value = hex
+    }
+
+    private fun bytesToHex(bytes: ByteArray): String =
+        bytes.joinToString("") { "%02x".format(it) }
 }
 
-@Composable
-private fun DeriveScreen() {
-    var ikmHex by remember {
-        mutableStateOf("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
-    }
-    var profile by remember { mutableStateOf("symmetric") }
-    var purpose by remember { mutableStateOf("test") }
-    var result by remember { mutableStateOf("") }
-
+@Suppress("ComposableNaming")
+@androidx.compose.runtime.Composable
+private fun DeriveScreen(
+    pin: MutableState<String>,
+    profile: MutableState<String>,
+    purpose: MutableState<String>,
+    layered: MutableState<Boolean>,
+    status: MutableState<String>,
+    output: MutableState<String>,
+) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
+        modifier = Modifier
+            .fillMaxWidth()
+            .safeDrawingPadding()
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("YKDF", style = MaterialTheme.typography.headlineSmall)
+
         OutlinedTextField(
-            value = ikmHex,
-            onValueChange = { ikmHex = it },
-            label = { Text("Input key material (hex)") },
-            modifier = Modifier.fillMaxSize(),
+            value = pin.value,
+            onValueChange = { pin.value = it },
+            label = { Text("PIV PIN") },
+            visualTransformation = PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(
-            value = profile,
-            onValueChange = { profile = it },
+            value = profile.value,
+            onValueChange = { profile.value = it },
             label = { Text("Profile") },
+            modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(
-            value = purpose,
-            onValueChange = { purpose = it },
+            value = purpose.value,
+            onValueChange = { purpose.value = it },
             label = { Text("Purpose") },
+            modifier = Modifier.fillMaxWidth(),
         )
-        Button(onClick = {
-            result = runCatching {
-                val ikm = hexToBytes(ikmHex)
-                val out = Native.derive(ikm, "hkdf-sha512", profile.trim(), purpose.trim(), 0)
-                bytesToHex(out)
-            }.getOrElse { "error: ${it.message}" }
-        }) {
-            Text("Derive")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = layered.value, onCheckedChange = { layered.value = it })
+            Text("Layered (PIV + HMAC slot 2)")
         }
-        if (result.isNotEmpty()) {
+
+        Text(status.value, style = MaterialTheme.typography.bodyMedium)
+        if (output.value.isNotEmpty()) {
             Text("Output", style = MaterialTheme.typography.titleMedium)
-            Text(result, style = MaterialTheme.typography.bodySmall)
+            Text(output.value, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
-
-/**
- * TODO(nfc): read the YubiKey secret over NFC and feed it into [Native.derive].
- *
- * The transport is `android.nfc.tech.IsoDep` (ISO 14443-4, APDU-native), so
- * both factors travel as APDUs with no libusb involved:
- *  - PIV ECDH on slot 9d: SELECT the PIV applet (A0 00 00 03 08), VERIFY PIN,
- *    then GENERAL AUTHENTICATE (INS 0x87) with the host ephemeral public point;
- *    the card returns the shared point. (yubikit-android: PivSession.)
- *  - HMAC-SHA1 challenge-response on OTP slot 2 over the same IsoDep channel.
- *    (yubikit-android: YubiOtpSession.calculateHmacSha1.)
- * The resulting secret bytes become the `ikm` argument here.
- */
-@Suppress("unused")
-private fun deriveFromNfc(): Nothing =
-    throw NotImplementedError("NFC IsoDep transport: pending on-device hardware step")
-
-private fun hexToBytes(hex: String): ByteArray {
-    val clean = hex.trim().replace(" ", "")
-    require(clean.length % 2 == 0) { "hex must have an even number of digits" }
-    return ByteArray(clean.length / 2) { i ->
-        clean.substring(i * 2, i * 2 + 2).toInt(16).toByte()
-    }
-}
-
-private fun bytesToHex(bytes: ByteArray): String =
-    bytes.joinToString("") { "%02x".format(it) }

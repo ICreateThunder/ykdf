@@ -6,5 +6,5 @@ local.properties
 # Native libraries are produced by build-native.sh (cargo-ndk), not committed.
 app/src/main/jniLibs/
 
-# Gradle wrapper jar is generated locally (`gradle wrapper`); not vendored here.
-.gradle
+# The Gradle wrapper (gradlew + gradle/wrapper/) IS committed for a reproducible
+# build; only the local cache directory is ignored.

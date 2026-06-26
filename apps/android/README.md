@@ -1,17 +1,31 @@
 # YKDF Android (spike)
 
-A minimal Android app that runs YKDF derivation on-device by calling
-`ykdf-core` through JNI (`crates/ykdf-jni`). This is a **feasibility spike**: it
-proves the Rust crypto core builds and links for Android and that the full chain
-Compose UI -> JNI -> `ykdf-core` -> bytes is sound. The NFC transport that will
-read the YubiKey secret is stubbed (see `MainActivity.deriveFromNfc`).
+A minimal Android app that reads a YubiKey over NFC and runs YKDF derivation
+on-device by calling `ykdf-core` through JNI (`crates/ykdf-jni`). This started as
+a feasibility spike and has been validated end to end on hardware.
 
-## What is proven
+## What is proven (on hardware)
 
-- `crates/ykdf-jni` cross-compiles to `arm64-v8a` and `x86_64` with NDK r27,
-  exporting `Java_app_ykdf_Native_derive`.
-- The pure-Rust helper behind that symbol reproduces the frozen golden vector
-  `symmetric/hkdf-sha512` byte-for-byte (unit-tested in `cargo test -p ykdf-jni`).
+Verified on an NFC-capable Android phone with a YubiKey 5 NFC:
+
+- `crates/ykdf-jni` cross-compiles to `arm64-v8a` and `x86_64` (NDK r27),
+  exporting `Java_app_ykdf_Native_derive`; the pure-Rust helper reproduces the
+  golden vector `symmetric/hkdf-sha512` byte-for-byte (`cargo test -p ykdf-jni`).
+- The custom, dependency-free NFC handler (`app/.../nfc/`) reads the slot-9d
+  self-ECDH secret over NFC ISO-DEP and the app derives the **same x25519 key the
+  desktop CLI produces over USB**, byte-for-byte.
+- The layered path (PIV ECDH + HMAC-SHA1 on OTP slot 2) also runs over NFC and
+  produces the expected distinct key. See `docs/transport-notes.md` for why NFC
+  is the cleaner transport for the HMAC factor.
+
+## NFC handler
+
+`app/src/main/java/app/ykdf/nfc/` is a small, zero-dependency APDU layer (no
+yubikit), so the entire YubiKey-facing surface is auditable:
+
+- `Apdu.kt` - command/response APDUs, `61xx` GET RESPONSE chaining, BER-TLV.
+- `YubiKeyNfc.kt` - reproduces the desktop IKM exactly: PIV self-ECDH on slot 9d
+  (32 bytes), and layered = ECDH ‖ HMAC-SHA1 on OTP slot 2 (52 bytes).
 
 ## Build the native library
 
@@ -25,25 +39,21 @@ packages into the APK automatically.
 
 ## Build the app
 
+A Gradle wrapper (8.11.1) is included. The verified toolchain is JDK 21 +
+AGP 8.10.1 + Kotlin 2.0.21 + Compose BOM 2024.09.00 + compileSdk 36. Point
+`JAVA_HOME` at a JDK 21 (a newer JDK may be rejected by Gradle/AGP):
+
 ```sh
-gradle wrapper        # one-time: generate the wrapper for this Gradle
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk   # or your JDK 21
+export ANDROID_HOME="$HOME/Android/Sdk"
+./build-native.sh
 ./gradlew :app:assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-> NOTE: the Gradle build was **not** executed in the spike environment (no
-> network for AGP/Compose artifacts). The version pins in `build.gradle.kts` and
-> `app/build.gradle.kts` (AGP 8.7.3, Kotlin 2.0.21, Compose BOM 2024.09.00,
-> compileSdk 35) are a coherent starting point; reconcile them in Android Studio
-> against the installed SDK platforms and Gradle version before relying on them.
+`local.properties` (with `sdk.dir=...`) is created locally and not committed.
 
-## Remaining work (needs hardware)
+## Using the app
 
-Wire `deriveFromNfc()` to `android.nfc.tech.IsoDep`. Because IsoDep is
-APDU-native (ISO 14443-4), both YubiKey factors travel as APDUs with no libusb
-involved:
-
-- **PIV ECDH (slot 9d):** SELECT PIV applet, VERIFY PIN, GENERAL AUTHENTICATE.
-- **HMAC-SHA1 CR (OTP slot 2):** challenge-response over the same channel.
-
-Yubico's `yubikit-android` (`PivSession`, `YubiOtpSession`) implements both over
-NFC and is the reference for the APDU exchanges. See `docs/android-spike.md`.
+Type the PIV PIN, set the profile/purpose, optionally tick Layered, then tap the
+YubiKey to the back of the phone.

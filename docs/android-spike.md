@@ -1,6 +1,9 @@
 # Android NFC feasibility spike
 
-Status: toolchain proven, app skeleton in place, NFC transport pending hardware.
+Status: validated end to end on hardware (an NFC-capable Android phone and a
+YubiKey 5 NFC). The NFC-derived key matches the desktop CLI byte-for-byte.
+Interface-level transport findings (incl. why HMAC cannot run over USB CCID) are
+in `transport-notes.md`.
 
 This spike de-risks an Android YKDF app ahead of committing to a full build-out.
 It answers two independent questions:

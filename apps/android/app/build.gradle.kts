@@ -6,12 +6,12 @@ plugins {
 
 android {
     namespace = "app.ykdf"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "app.ykdf"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "0.2.0"
     }
