@@ -1,3 +1,13 @@
+//! `YubiKey` transport for YKDF: PIV ECDH, HMAC-SHA1 challenge-response, and
+//! provisioning.
+//!
+//! Reads the hardware secret from a `YubiKey` over PC/SC (PIV) and USB HID
+//! (OTP/HMAC) and turns it into input key material for `ykdf-core`. This crate
+//! is desktop-only (it needs a PC/SC stack); other platforms supply their own
+//! transport.
+
+#![deny(missing_docs)]
+
 mod error;
 pub mod hmac;
 pub mod piv;

@@ -36,13 +36,21 @@ pub(crate) fn take_fixed<const N: usize>(expanded: &ExpandedBytes) -> Result<[u8
 /// Key profile determining output shape and post-processing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Profile {
+    /// X25519 secret key (e.g. `WireGuard`), 32 bytes, clamped.
     X25519,
+    /// Ed25519 signing key seed, 32 bytes.
     Ed25519,
+    /// age X25519 identity (`AGE-SECRET-KEY-1...`).
     AgeX25519,
+    /// Raw 32-byte symmetric key.
     Symmetric,
+    /// ML-KEM-512 keypair (FIPS 203).
     MlKem512,
+    /// ML-KEM-768 keypair (FIPS 203).
     MlKem768,
+    /// ML-KEM-1024 keypair (FIPS 203).
     MlKem1024,
+    /// Raw expanded bytes of caller-chosen length.
     Raw,
 }
 
@@ -79,6 +87,7 @@ impl Profile {
         }
     }
 
+    /// Parses a profile from its wire-format label, returning `None` if unknown.
     pub fn from_str_label(s: &str) -> Option<Self> {
         match s {
             "x25519" => Some(Self::X25519),
@@ -93,6 +102,7 @@ impl Profile {
         }
     }
 
+    /// Returns the canonical wire-format label for this profile.
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::X25519 => "x25519",
@@ -128,24 +138,33 @@ pub enum ProfileOutput {
     Raw(RawBytes),
 }
 
+/// A 32-byte secret key (x25519 or symmetric).
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub struct SecretKeyBytes(pub [u8; 32]);
 
+/// An Ed25519 signing key, as its 32-byte seed.
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub struct Ed25519SeedBytes(pub [u8; 32]);
 
+/// An ML-KEM keypair in its canonical byte encodings.
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub struct MlKemKeypairBytes {
+    /// Public encapsulation key.
     pub encapsulation_key: Vec<u8>,
+    /// Secret decapsulation key.
     pub decapsulation_key: Vec<u8>,
 }
 
+/// An age X25519 identity: the raw key plus its encoded form.
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub struct AgeIdentityBytes {
+    /// Raw 32-byte X25519 secret key.
     pub secret_key: [u8; 32],
+    /// Bech32-encoded identity string (`AGE-SECRET-KEY-1...`).
     pub identity: String,
 }
 
+/// Raw expanded bytes of caller-chosen length.
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub struct RawBytes(pub Vec<u8>);
 

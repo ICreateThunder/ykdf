@@ -96,6 +96,7 @@ pub struct StretchedPassphrase {
 }
 
 impl StretchedPassphrase {
+    /// Returns the 64-byte stretched output.
     pub fn as_bytes(&self) -> &[u8] {
         &self.bytes
     }

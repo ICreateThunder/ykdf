@@ -30,6 +30,7 @@ impl Ikm {
         Ok(Self(bytes))
     }
 
+    /// Returns the raw key material bytes.
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
@@ -50,6 +51,7 @@ impl MasterKey {
         Self(bytes)
     }
 
+    /// Returns the 64-byte master key.
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
@@ -67,14 +69,17 @@ impl ExpandedBytes {
         Self(bytes)
     }
 
+    /// Returns the expanded bytes.
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
 
+    /// Returns the number of expanded bytes.
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
+    /// Returns `true` if there are no expanded bytes.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }

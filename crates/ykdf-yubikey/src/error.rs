@@ -1,31 +1,54 @@
+/// Specialized [`Result`](core::result::Result) for `ykdf-yubikey` operations.
 pub type Result<T> = core::result::Result<T, Error>;
 
+/// Errors from `YubiKey` PIV, HMAC, and provisioning operations.
 #[derive(Debug)]
 pub enum Error {
     /// No `YubiKey` device found.
     DeviceNotFound,
     /// PIV PIN verification failed.
-    WrongPin { retries: u8 },
+    WrongPin {
+        /// Remaining PIN attempts.
+        retries: u8,
+    },
     /// PIV PIN is locked (too many failed attempts).
     PinLocked,
     /// No certificate in PIV slot 9d.
     NoCertificate,
     /// Certificate does not contain a valid P-256 public key.
-    InvalidPublicKey { detail: String },
+    InvalidPublicKey {
+        /// Description of the failure.
+        detail: String,
+    },
     /// PIV ECDH key agreement failed.
-    EcdhFailed { detail: String },
+    EcdhFailed {
+        /// Description of the failure.
+        detail: String,
+    },
     /// HMAC-SHA1 challenge-response failed.
-    HmacFailed { detail: String },
+    HmacFailed {
+        /// Description of the failure.
+        detail: String,
+    },
     /// PIV management key authentication failed.
     MgmtAuthFailed,
     /// The PIN-protected or PIN-derived management key could not be read.
     MgmtKeyUnavailable,
     /// PIV provisioning (key generation or certificate write) failed.
-    ProvisionFailed { detail: String },
+    ProvisionFailed {
+        /// Description of the failure.
+        detail: String,
+    },
     /// A supplied private scalar is not a valid P-256 key.
-    InvalidScalar { detail: String },
+    InvalidScalar {
+        /// Description of the failure.
+        detail: String,
+    },
     /// Programming the HMAC-SHA1 secret onto OTP slot 2 failed.
-    HmacProgramFailed { detail: String },
+    HmacProgramFailed {
+        /// Description of the failure.
+        detail: String,
+    },
     /// `YubiKey` PIV operation error.
     Piv(String),
 }
