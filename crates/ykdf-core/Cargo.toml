@@ -26,6 +26,12 @@ ml-kem.workspace = true
 ml-dsa.workspace = true
 bech32.workspace = true
 
+# ml-dsa pulls getrandom 0.4, which refuses to build for wasm32-unknown-unknown
+# unless a backend is selected. We only use deterministic (seed-based) keygen, so
+# the RNG is never called at runtime; enabling wasm_js just lets it compile.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.4", features = ["wasm_js"] }
+
 [dev-dependencies]
 hex = "0.4.3"
 hkdf = "0.13.0"
