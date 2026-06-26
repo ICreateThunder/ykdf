@@ -27,6 +27,7 @@ impl Pipeline {
         }
     }
 
+    /// Parses a pipeline from its wire-format label, returning `None` if unknown.
     pub fn from_str_label(s: &str) -> Option<Self> {
         match s {
             "hkdf-sha512" => Some(Self::HkdfSha512),

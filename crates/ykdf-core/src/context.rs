@@ -126,18 +126,22 @@ impl Context {
         })
     }
 
+    /// Returns the KDF pipeline.
     pub fn pipeline(&self) -> Pipeline {
         self.pipeline
     }
 
+    /// Returns the key profile.
     pub fn profile(&self) -> Profile {
         self.profile
     }
 
+    /// Returns the purpose label.
     pub fn purpose(&self) -> &str {
         self.purpose.as_str()
     }
 
+    /// Returns the key index.
     pub fn index(&self) -> u32 {
         self.index
     }

@@ -40,7 +40,9 @@ pub const HMAC_SECRET_LEN: usize = 20;
 /// PIN and touch policies applied to the generated slot 9d key.
 #[derive(Clone, Copy)]
 pub struct PivPolicy {
+    /// When the PIN must be entered to use the key.
     pub pin_policy: PinPolicy,
+    /// When physical touch is required to use the key.
     pub touch_policy: TouchPolicy,
 }
 

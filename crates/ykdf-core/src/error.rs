@@ -1,39 +1,83 @@
+/// Specialized [`Result`](core::result::Result) for `ykdf-core` operations.
 pub type Result<T> = core::result::Result<T, Error>;
 
+/// Errors from context parsing, key derivation, and profile post-processing.
 #[derive(Debug)]
 pub enum Error {
-    /// Context string is malformed or has wrong number of fields.
-    InvalidContext { input: String },
+    /// Context string is malformed or has the wrong number of fields.
+    InvalidContext {
+        /// The malformed context string.
+        input: String,
+    },
     /// Purpose field contains invalid characters or length.
-    InvalidPurpose { purpose: String },
+    InvalidPurpose {
+        /// The rejected purpose value.
+        purpose: String,
+    },
     /// Profile string not recognized.
-    InvalidProfile { profile: String },
+    InvalidProfile {
+        /// The unrecognized profile label.
+        profile: String,
+    },
     /// Pipeline string not recognized.
-    InvalidPipeline { pipeline: String },
-    /// Index field is not a valid u32.
-    InvalidIndex { index: String },
+    InvalidPipeline {
+        /// The unrecognized pipeline label.
+        pipeline: String,
+    },
+    /// Index field is not a valid `u32`.
+    InvalidIndex {
+        /// The value that failed to parse.
+        index: String,
+    },
     /// Input key material is shorter than the minimum allowed length.
-    InsufficientIkm { len: usize, min: usize },
+    InsufficientIkm {
+        /// Supplied length, in bytes.
+        len: usize,
+        /// Minimum required length, in bytes.
+        min: usize,
+    },
     /// Profile does not accept the specified pipeline.
     PipelineMismatch {
+        /// The profile that rejected the pipeline.
         profile: &'static str,
+        /// The pipeline the profile does not accept.
         pipeline: &'static str,
     },
     /// Requested expand output exceeds the maximum for the hash (255 * hash length).
-    ExpandOutputTooLong { requested: usize, max: usize },
+    ExpandOutputTooLong {
+        /// Requested length, in bytes.
+        requested: usize,
+        /// Maximum length the hash allows, in bytes.
+        max: usize,
+    },
     /// PRK length does not match the hash output size.
-    InvalidPrkLength { len: usize, expected: usize },
+    InvalidPrkLength {
+        /// Supplied PRK length, in bytes.
+        len: usize,
+        /// Expected length for the hash, in bytes.
+        expected: usize,
+    },
     /// Function requires a specific profile but a different one was provided.
     ProfileMismatch {
+        /// The required profile.
         expected: &'static str,
+        /// The profile that was provided.
         got: &'static str,
     },
     /// Requested output length is zero.
     ZeroLengthOutput,
-    /// Expand produced wrong number of bytes.
-    ExpandLength { expected: usize, got: usize },
+    /// Expand produced the wrong number of bytes.
+    ExpandLength {
+        /// Expected length, in bytes.
+        expected: usize,
+        /// Produced length, in bytes.
+        got: usize,
+    },
     /// Profile post-processing failed.
-    PostProcessing { detail: String },
+    PostProcessing {
+        /// Description of the failure.
+        detail: String,
+    },
 }
 
 impl core::fmt::Display for Error {
