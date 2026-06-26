@@ -2005,7 +2005,7 @@ dependencies = [
 
 [[package]]
 name = "ykdf"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "base64",
  "bech32",
@@ -2021,7 +2021,7 @@ dependencies = [
 
 [[package]]
 name = "ykdf-core"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "argon2",
  "bech32",
@@ -2043,7 +2043,7 @@ dependencies = [
 
 [[package]]
 name = "ykdf-yubikey"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "getrandom 0.2.17",
  "p256",
