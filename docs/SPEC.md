@@ -52,6 +52,9 @@ same inputs always produce the same bytes, with no stored state.
 | `mlkem512`    | 64            | ML-KEM-512 keygen from seed            |
 | `mlkem768`    | 64            | ML-KEM-768 keygen from seed            |
 | `mlkem1024`   | 64            | ML-KEM-1024 keygen from seed           |
+| `mldsa44`     | 32            | ML-DSA-44 keygen from seed             |
+| `mldsa65`     | 32            | ML-DSA-65 keygen from seed             |
+| `mldsa87`     | 32            | ML-DSA-87 keygen from seed             |
 | `raw`         | caller-chosen | verbatim                               |
 
 ## 1. Input Key Material (IKM)
@@ -157,7 +160,7 @@ ykdf:v1:<pipeline>:<profile>:<purpose>:<index>
 
 - `pipeline` ∈ { `hkdf-sha512`, `hkdf-sha3-512`, `shake256` }
 - `profile` ∈ { `x25519`, `ed25519`, `age-x25519`, `symmetric`, `mlkem512`,
-  `mlkem768`, `mlkem1024`, `raw` }
+  `mlkem768`, `mlkem1024`, `mldsa44`, `mldsa65`, `mldsa87`, `raw` }
 - `purpose`: 1–64 characters, each `a`–`z`, `0`–`9`, or `-`; no leading or
   trailing `-`. (No field may contain `:`, so the encoding is unambiguous.)
 - `index`: a `u32` rendered in decimal (`0`–`4294967295`), for key rotation.
@@ -201,8 +204,9 @@ okm = SHAKE256( master_key || kdf_info ), squeeze length
 (No domain tag here: the master key is always exactly 64 bytes, so the boundary
 with `kdf_info` is unambiguous.)
 
-The expand length per profile is fixed (32 for classical and `raw`-by-default,
-64 for ML-KEM); `raw` may request any length 1..=16320 via the API.
+The expand length per profile is fixed (32 for classical, ML-DSA, and
+`raw`-by-default, 64 for ML-KEM); `raw` may request any length 1..=16320 via the
+API.
 
 ## 6. Profile post-processing
 
@@ -251,6 +255,19 @@ FIPS 203 compliance of the primitive is provided by the underlying ML-KEM
 implementation, cross-checked by an encapsulate/decapsulate round-trip in the
 test suite.
 
+### mldsa44 / mldsa65 / mldsa87 (32 → keypair)
+
+The 32-byte `okm` is the ML-DSA seed `xi`. ML-DSA key generation (FIPS 204) is
+run on this seed to produce:
+
+- `verifying_key`: the standard encoded ML-DSA verifying key
+  (1312 / 1952 / 2592 bytes for 44 / 65 / 87).
+- `signing_key`: the **32-byte seed `xi`**, not the expanded FIPS 204 signing
+  key. Reconstruct the full signing key by re-running keygen on the seed.
+
+FIPS 204 compliance of the primitive is provided by the underlying ML-DSA
+implementation, cross-checked by a sign/verify round-trip in the test suite.
+
 ### raw (length → length bytes)
 
 The `okm` verbatim.
@@ -266,6 +283,9 @@ The `okm` verbatim.
 | `mlkem512`   | ❌            | ❌              | ✅         | `shake256`     |
 | `mlkem768`   | ❌            | ❌              | ✅         | `shake256`     |
 | `mlkem1024`  | ❌            | ❌              | ✅         | `shake256`     |
+| `mldsa44`    | ❌            | ❌              | ✅         | `shake256`     |
+| `mldsa65`    | ❌            | ❌              | ✅         | `shake256`     |
+| `mldsa87`    | ❌            | ❌              | ✅         | `shake256`     |
 | `raw`        | ✅            | ✅              | ✅         | `hkdf-sha512`  |
 
 A context with a disallowed pipeline/profile combination is rejected.

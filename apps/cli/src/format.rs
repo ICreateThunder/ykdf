@@ -22,6 +22,9 @@ pub fn format_output(
         (ProfileOutput::MlKemKeypair(kp), OutputFormat::Base64) => {
             Ok(line(BASE64.encode(&kp.decapsulation_key)))
         }
+        (ProfileOutput::MlDsaKeypair(kp), OutputFormat::Base64) => {
+            Ok(line(BASE64.encode(&kp.signing_key)))
+        }
         (ProfileOutput::Raw(r), OutputFormat::Base64) => Ok(line(BASE64.encode(&r.0))),
 
         // hex
@@ -29,6 +32,9 @@ pub fn format_output(
         (ProfileOutput::Ed25519Seed(s), OutputFormat::Hex) => Ok(line(hex::encode(s.0))),
         (ProfileOutput::MlKemKeypair(kp), OutputFormat::Hex) => {
             Ok(line(hex::encode(&kp.decapsulation_key)))
+        }
+        (ProfileOutput::MlDsaKeypair(kp), OutputFormat::Hex) => {
+            Ok(line(hex::encode(&kp.signing_key)))
         }
         (ProfileOutput::Raw(r), OutputFormat::Hex) => Ok(line(hex::encode(&r.0))),
 
@@ -44,6 +50,7 @@ pub fn format_output(
         (ProfileOutput::SecretKey(k), OutputFormat::Binary) => Ok(k.0.to_vec()),
         (ProfileOutput::Ed25519Seed(s), OutputFormat::Binary) => Ok(s.0.to_vec()),
         (ProfileOutput::MlKemKeypair(kp), OutputFormat::Binary) => Ok(kp.decapsulation_key.clone()),
+        (ProfileOutput::MlDsaKeypair(kp), OutputFormat::Binary) => Ok(kp.signing_key.clone()),
         (ProfileOutput::AgeIdentity(a), OutputFormat::Binary) => Ok(a.secret_key.to_vec()),
         (ProfileOutput::Raw(r), OutputFormat::Binary) => Ok(r.0.clone()),
 
@@ -90,6 +97,7 @@ pub fn format_pubkey(output: &ProfileOutput, profile: Profile) -> Result<Vec<u8>
             Ok(line(recipient))
         }
         ProfileOutput::MlKemKeypair(kp) => Ok(line(BASE64.encode(&kp.encapsulation_key))),
+        ProfileOutput::MlDsaKeypair(kp) => Ok(line(BASE64.encode(&kp.verifying_key))),
         ProfileOutput::Raw(_) => Err(CliError::NoPubkey {
             profile: profile.as_str(),
         }),
@@ -101,9 +109,13 @@ fn default_format(profile: Profile) -> OutputFormat {
         Profile::Ed25519 => OutputFormat::Openssh,
         Profile::AgeX25519 => OutputFormat::Age,
         Profile::Symmetric | Profile::Raw => OutputFormat::Hex,
-        Profile::X25519 | Profile::MlKem512 | Profile::MlKem768 | Profile::MlKem1024 => {
-            OutputFormat::Base64
-        }
+        Profile::X25519
+        | Profile::MlKem512
+        | Profile::MlKem768
+        | Profile::MlKem1024
+        | Profile::MlDsa44
+        | Profile::MlDsa65
+        | Profile::MlDsa87 => OutputFormat::Base64,
     }
 }
 

@@ -39,19 +39,25 @@ wildcards = "deny"
 deny = []
 # Transitional duplicates from the RustCrypto digest 0.10 -> 0.11 split
 # and yubikey/yubikey-hmac-otp transitive dependencies. ed25519-dalek 2.x
-# still pins digest 0.10 (via sha2 0.10). Skipped explicitly so any NEW
+# still pins digest 0.10 (via sha2 0.10). The der/pkcs8/signature/spki
+# duplicates come from ml-dsa 0.1, which tracks a newer RustCrypto trait
+# generation than p256 0.13 / yubikey. Skipped explicitly so any NEW
 # unexpected duplicate still fails.
 skip = [
     { crate = "block-buffer" },
     { crate = "const-oid" },
     { crate = "cpufeatures" },
     { crate = "crypto-common" },
+    { crate = "der" },
     { crate = "digest" },
     { crate = "getrandom" },
     { crate = "hmac" },
+    { crate = "pkcs8" },
     { crate = "quote" },
     { crate = "rand_core" },
     { crate = "sha2" },
+    { crate = "signature" },
+    { crate = "spki" },
 ]
 skip-tree = []
 
