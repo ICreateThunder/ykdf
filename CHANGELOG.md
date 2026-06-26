@@ -7,6 +7,8 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-26
+
 ### Added
 
 - ML-DSA (FIPS 204) signature profiles `mldsa44`, `mldsa65`, and `mldsa87`,
