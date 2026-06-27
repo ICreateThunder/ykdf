@@ -101,7 +101,7 @@ mod linux {
     use std::thread;
     use std::time::{Duration, Instant};
 
-    use zeroize::Zeroizing;
+    use zeroize::{Zeroize, Zeroizing};
 
     use super::{CRC_OK_RESIDUAL, crc16};
     use crate::error::Error;
@@ -169,7 +169,9 @@ mod linux {
         let frame = build_frame(challenge, SLOT2_HMAC);
         write_frame(fd, &frame)?;
 
-        let mut response = [0u8; RESPONSE_SIZE];
+        // Zeroized on drop: this buffer holds the 20-byte HMAC, which is secret
+        // IKM material.
+        let mut response = Zeroizing::new([0u8; RESPONSE_SIZE]);
         read_response(fd, &mut response)?;
 
         // The response is the 20-byte HMAC followed by its 2-byte CRC.
@@ -205,7 +207,9 @@ mod linux {
 
         wait_flags(fd, |f| f & SLOT_WRITE_FLAG == 0).map_err(reflag_program)?;
         let payload = build_hmac_config_payload(secret, require_touch);
-        let frame = frame_from_payload(&payload, SLOT2_CONFIG);
+        // Zeroized on drop: the frame embeds the 64-byte config payload, which
+        // contains the raw HMAC secret being programmed.
+        let frame = Zeroizing::new(frame_from_payload(&payload, SLOT2_CONFIG));
         write_frame(fd, &frame).map_err(reflag_program)?;
         wait_flags(fd, |f| f & SLOT_WRITE_FLAG == 0).map_err(reflag_program)?;
         Ok(())
@@ -215,8 +219,12 @@ mod linux {
     /// challenge-response. The packed layout is
     /// `fixed[16] uid[6] key[16] acc_code[6] fixed_size ext_flags tkt_flags cfg_flags rfu[2] crc[2]`.
     /// The 20-byte HMAC key fills `key` plus the first 4 bytes of `uid`.
-    fn build_hmac_config_payload(secret: &[u8; 20], require_touch: bool) -> [u8; PAYLOAD_SIZE] {
-        let mut cfg = [0u8; CONFIG_STRUCT_SIZE];
+    fn build_hmac_config_payload(
+        secret: &[u8; 20],
+        require_touch: bool,
+    ) -> Zeroizing<[u8; PAYLOAD_SIZE]> {
+        // Both buffers embed the raw HMAC secret, so they are zeroized on drop.
+        let mut cfg = Zeroizing::new([0u8; CONFIG_STRUCT_SIZE]);
         cfg[16..20].copy_from_slice(&secret[16..20]); // uid[0..4] = key tail
         cfg[22..38].copy_from_slice(&secret[0..16]); // key = key head
         cfg[46] = TKT_CHAL_RESP;
@@ -231,8 +239,8 @@ mod linux {
         cfg[50] = (crc & 0xff) as u8;
         cfg[51] = (crc >> 8) as u8;
 
-        let mut payload = [0u8; PAYLOAD_SIZE];
-        payload[..CONFIG_STRUCT_SIZE].copy_from_slice(&cfg);
+        let mut payload = Zeroizing::new([0u8; PAYLOAD_SIZE]);
+        payload[..CONFIG_STRUCT_SIZE].copy_from_slice(&cfg[..]);
         payload
     }
 
@@ -286,6 +294,8 @@ mod linux {
                 packet[7] = SLOT_WRITE_FLAG | seq;
                 wait_flags(fd, |f| f & SLOT_WRITE_FLAG == 0)?;
                 set_feature(fd, &packet)?;
+                // On the config-write path these report bytes are secret.
+                packet.zeroize();
             }
             offset += REPORT_DATA;
             seq += 1;
@@ -343,7 +353,10 @@ mod linux {
     fn set_feature(fd: i32, report: &[u8; 8]) -> crate::Result<()> {
         let mut buf = [0u8; 9]; // buf[0] = report number 0
         buf[1..9].copy_from_slice(report);
-        // SAFETY: HIDIOCSFEATURE writes the 9-byte buffer to the device.
+        // SAFETY: `fd` is a valid open hidraw descriptor (the caller holds the
+        // backing `File` alive for the call). `buf` is a live, aligned `[u8; 9]`
+        // on the stack. HIDIOCSFEATURE encodes size = HID_BUF_LEN (9), matching
+        // the buffer, so the kernel reads exactly these 9 bytes and no further.
         let rc = unsafe { libc::ioctl(fd, HIDIOCSFEATURE, buf.as_mut_ptr()) };
         if rc < 0 {
             return Err(Error::HmacFailed {
@@ -356,7 +369,10 @@ mod linux {
     #[allow(unsafe_code)] // the hidraw ioctl is the one FFI call this crate needs
     fn get_feature(fd: i32) -> crate::Result<[u8; 8]> {
         let mut buf = [0u8; 9]; // buf[0] = report number 0
-        // SAFETY: HIDIOCGFEATURE fills the 9-byte buffer from the device.
+        // SAFETY: `fd` is a valid open hidraw descriptor (the caller holds the
+        // backing `File` alive for the call). `buf` is a live, aligned `[u8; 9]`
+        // on the stack. HIDIOCGFEATURE encodes size = HID_BUF_LEN (9), matching
+        // the buffer, so the kernel writes exactly these 9 bytes and no further.
         let rc = unsafe { libc::ioctl(fd, HIDIOCGFEATURE, buf.as_mut_ptr()) };
         if rc < 0 {
             return Err(Error::HmacFailed {
