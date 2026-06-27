@@ -1,0 +1,28 @@
+# YKDF udev rule: non-root access to the YubiKey HID interfaces.
+#
+# Layered mode (`ykdf init --layered` / `ykdf derive --layered`) reads HMAC-SHA1
+# challenge-response from OTP slot 2 over the kernel `hidraw` interface. That
+# node is root-only by default, so without this rule those commands need sudo (or
+# the scdaemon transport, which still reads HMAC over hidraw). The default
+# non-layered PIV path uses PC/SC (pcscd), not hidraw, and is unaffected.
+#
+# This grants the locally logged-in (seat) user access via systemd-logind /
+# elogind's `uaccess` tag, matched by USB vendor 0x1050 (Yubico).
+#
+# We match the vendor only, NOT the USB interface number. Combining
+# ATTRS{bInterfaceNumber} (which lives on the USB interface) with
+# ATTRS{idVendor} (on the USB device above it) does not match: udev cannot
+# resolve two ATTRS keys that live on different ancestors of a hidraw node
+# (verified on a YubiKey 5: the OTP hidraw never got the tag until the interface
+# match was dropped). Matching the vendor alone also covers the FIDO interface,
+# but that already gets `uaccess` from systemd's fido_id rules, so this grants
+# nothing new there.
+#
+# Install:
+#   sudo install -m 0644 dist/udev/70-ykdf.rules /etc/udev/rules.d/70-ykdf.rules
+#   sudo udevadm control --reload
+# then REPLUG the YubiKey (or reboot) so the rule applies. Do not run a bare
+# `udevadm trigger`: it re-enumerates every device and can disrupt other USB
+# connections.
+
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1050", TAG+="uaccess"

@@ -129,6 +129,10 @@ pub struct DeriveArgs {
     /// Output length in bytes (only valid with --profile raw)
     #[arg(long)]
     pub length: Option<usize>,
+
+    /// Smartcard transport for the PIV factor
+    #[arg(long, default_value = "auto")]
+    pub transport: TransportArg,
 }
 
 #[derive(clap::Args)]
@@ -160,6 +164,34 @@ pub struct PubkeyArgs {
     /// Prompt for passphrase as additional entropy factor
     #[arg(long)]
     pub passphrase: bool,
+
+    /// Smartcard transport for the PIV factor
+    #[arg(long, default_value = "auto")]
+    pub transport: TransportArg,
+}
+
+/// Selects how the PIV factor reaches the smartcard.
+#[derive(Clone, Copy, ValueEnum)]
+pub enum TransportArg {
+    /// Auto-detect: direct PC/SC, falling back to gpg-agent's scdaemon when the
+    /// card is held by gpg
+    Auto,
+    /// Force the direct PC/SC path (no gpg involvement)
+    Pcsc,
+    /// Route through gpg-agent's scdaemon (coexist with gpg without releasing
+    /// the card)
+    Scdaemon,
+}
+
+impl TransportArg {
+    /// Map to an explicit transport override, or `None` for auto-detection.
+    pub fn to_override(self) -> Option<ykdf_yubikey::Transport> {
+        match self {
+            Self::Auto => None,
+            Self::Pcsc => Some(ykdf_yubikey::Transport::Pcsc),
+            Self::Scdaemon => Some(ykdf_yubikey::Transport::Scdaemon),
+        }
+    }
 }
 
 #[derive(Clone, ValueEnum)]

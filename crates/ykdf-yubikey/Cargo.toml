@@ -18,6 +18,9 @@ must_use_candidate = "allow"
 [dependencies]
 ykdf-core = { path = "../ykdf-core", version = "0.2.0" }
 yubikey.workspace = true
+# Named directly (already pulled transitively by yubikey) so the open path can
+# distinguish a PC/SC sharing violation, i.e. a reader held by scdaemon.
+pcsc = "2.9"
 p256.workspace = true
 x509-cert = "0.2"
 getrandom = "0.2"

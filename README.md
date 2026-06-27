@@ -278,6 +278,43 @@ peer point storage is needed.
 
 ## Setup
 
+### Linux permissions (PC/SC and hidraw)
+
+The default (non-layered) PIV path talks to the YubiKey over PC/SC, so the
+`pcscd` service must be installed and running (`systemctl enable --now pcscd`).
+No special permissions are needed for it.
+
+Layered mode additionally reads HMAC-SHA1 from OTP slot 2 over the kernel
+`hidraw` interface, whose device node is root-only by default. Without access,
+`--layered` fails with a clear "needs udev access or elevated privileges" error.
+Install the bundled rule to grant the logged-in user access (scoped to the OTP
+interface of any YubiKey):
+
+```bash
+sudo install -m 0644 dist/udev/70-ykdf.rules /etc/udev/rules.d/70-ykdf.rules
+sudo udevadm control --reload
+# then REPLUG the YubiKey so the rule applies.
+# Avoid a bare `udevadm trigger`: it re-enumerates every device and can disrupt
+# other USB connections. To apply without replugging, scope it to the key:
+#   sudo udevadm trigger --subsystem-match=hidraw --attr-match=idVendor=1050
+```
+
+If you use the YubiKey for GPG, `gpg-agent`'s `scdaemon` holds the smartcard
+exclusively for the lifetime of the daemon. `ykdf` handles this automatically: it
+detects the held card and routes its PIV APDUs *through* scdaemon (the Assuan
+`SCD APDU` passthrough), so no kill is needed and gpg keeps working. Control this
+with `--transport`:
+
+```bash
+ykdf derive ... --transport auto       # default: PC/SC, fall back to scdaemon if busy
+ykdf derive ... --transport pcsc       # force direct PC/SC (e.g. gpgconf --kill scdaemon first)
+ykdf derive ... --transport scdaemon   # force routing through gpg-agent
+```
+
+`YKDF_TRANSPORT=auto|pcsc|scdaemon` is honoured as a fallback when `--transport`
+is left at `auto`. Layered mode still reads the HMAC factor over hidraw (a
+separate interface scdaemon does not hold), so it needs the udev rule above.
+
 ### Single YubiKey (on-device generation)
 
 ```bash

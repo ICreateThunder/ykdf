@@ -7,8 +7,26 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 
 ## [Unreleased]
 
+### Added
+
+- Bundled udev rule `dist/udev/70-ykdf.rules` granting the logged-in user access
+  to the YubiKey OTP HID interface, so layered mode no longer needs `sudo`. A new
+  README "Linux permissions" section documents PC/SC, the udev rule, and the
+  scdaemon caveat.
+- scdaemon passthrough transport: `ykdf` can drive the PIV factor *through*
+  gpg-agent's scdaemon (Assuan `SCD APDU`) instead of opening PC/SC directly, so
+  it coexists with gpg without releasing the card. Selected with `--transport
+  auto|pcsc|scdaemon` (or `YKDF_TRANSPORT`); the default auto-detects, routing
+  through scdaemon only when it actually holds the card. Layered mode keeps
+  reading HMAC over hidraw. Linux/Unix only. See `docs/transport-notes.md`.
+
 ### Changed
 
+- `ykdf-yubikey`: the open path now distinguishes a smartcard held by another
+  application (commonly `gpg-agent`'s `scdaemon`) from a genuinely absent device.
+  `YubiKey::open()` silently skips a reader it cannot connect to, which made
+  contention look like "no YubiKey found"; the open now re-probes on failure and
+  surfaces a `SmartcardBusy` error naming the `gpgconf --kill scdaemon` remedy.
 - `ykdf-yubikey`: the HMAC-SHA1 challenge-response factor (and slot-2
   programming) now talk to the YubiKey over the Linux `hidraw` interface using a
   small in-tree implementation of the OTP frame protocol, replacing the

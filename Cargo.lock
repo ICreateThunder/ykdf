@@ -2111,6 +2111,7 @@ dependencies = [
  "getrandom 0.2.17",
  "libc",
  "p256",
+ "pcsc",
  "rand_core 0.6.4",
  "x509-cert",
  "ykdf-core",
