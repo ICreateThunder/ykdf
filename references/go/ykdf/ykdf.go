@@ -105,6 +105,7 @@ func Extract(pipeline Pipeline, ikm []byte) ([]byte, error) {
 		input = append(input, extractTag)
 		input = append(input, extractSalt...)
 		input = append(input, ikm...)
+		defer wipe(input)
 		return shake256(input, masterKeyLen), nil
 	default:
 		return nil, fmt.Errorf("ykdf: unknown pipeline %q", pipeline)
@@ -115,12 +116,14 @@ func Extract(pipeline Pipeline, ikm []byte) ([]byte, error) {
 // replacement master key. It must run after Extract and before Expand.
 func Cascade(pipeline Pipeline, masterKey []byte, passphrase string) ([]byte, error) {
 	stretched := stretch(passphrase)
+	defer wipe(stretched)
 
 	// cascade_ikm = len(descriptor) || descriptor || stretched(64).
 	cascadeIKM := make([]byte, 0, 1+len(stretchDescriptor)+len(stretched))
 	cascadeIKM = append(cascadeIKM, byte(len(stretchDescriptor)))
 	cascadeIKM = append(cascadeIKM, stretchDescriptor...)
 	cascadeIKM = append(cascadeIKM, stretched...)
+	defer wipe(cascadeIKM)
 
 	switch pipeline {
 	case HKDFSHA512, HKDFSHA3512:
@@ -132,6 +135,7 @@ func Cascade(pipeline Pipeline, masterKey []byte, passphrase string) ([]byte, er
 		input = append(input, cascadeTag)
 		input = append(input, masterKey...)
 		input = append(input, cascadeIKM...)
+		defer wipe(input)
 		return shake256(input, masterKeyLen), nil
 	default:
 		return nil, fmt.Errorf("ykdf: unknown pipeline %q", pipeline)
@@ -152,8 +156,20 @@ func Expand(pipeline Pipeline, masterKey []byte, context string, length int) ([]
 		input := make([]byte, 0, len(masterKey)+len(info))
 		input = append(input, masterKey...)
 		input = append(input, info...)
+		defer wipe(input)
 		return shake256(input, length), nil
 	default:
 		return nil, fmt.Errorf("ykdf: unknown pipeline %q", pipeline)
+	}
+}
+
+// wipe best-effort zeroes a secret-bearing intermediate buffer once it is no
+// longer needed. Go has no equivalent of the Rust core's Zeroizing/ZeroizeOnDrop
+// guarantees (the compiler may elide the writes, and earlier copies may linger),
+// so this is a courtesy, not a hard scrub. This reference exists for byte-level
+// conformance; production secret handling is the canonical implementation's job.
+func wipe(b []byte) {
+	for i := range b {
+		b[i] = 0
 	}
 }

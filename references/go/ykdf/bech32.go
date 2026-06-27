@@ -49,7 +49,12 @@ func bech32HRPExpand(hrp string) []byte {
 
 // bech32Checksum computes the 6-symbol Bech32 (constant 1) checksum.
 func bech32Checksum(hrp string, data []byte) []byte {
-	values := append(bech32HRPExpand(hrp), data...)
+	expanded := bech32HRPExpand(hrp)
+	// Build the polymod input in a dedicated buffer so the result never depends
+	// on whether append happens to reallocate any of the inputs.
+	values := make([]byte, 0, len(expanded)+len(data)+6)
+	values = append(values, expanded...)
+	values = append(values, data...)
 	values = append(values, 0, 0, 0, 0, 0, 0)
 	polymod := bech32Polymod(values) ^ 1
 	out := make([]byte, 6)
@@ -81,7 +86,10 @@ func convertBits(data []byte) []byte {
 // bech32Encode produces the lower-case Bech32 string for hrp and raw data.
 func bech32Encode(hrp string, data []byte) (string, error) {
 	conv := convertBits(data)
-	combined := append(conv, bech32Checksum(hrp, conv)...)
+	checksum := bech32Checksum(hrp, conv)
+	combined := make([]byte, 0, len(conv)+len(checksum))
+	combined = append(combined, conv...)
+	combined = append(combined, checksum...)
 	var sb strings.Builder
 	sb.WriteString(hrp)
 	sb.WriteByte('1')
