@@ -41,7 +41,17 @@ pub enum IkmMode {
 /// Returns an error if no `YubiKey` is found, PIN is wrong, the
 /// certificate is missing, or the cryptographic operation fails.
 pub fn derive_ikm(mode: IkmMode, pin: &[u8]) -> Result<ykdf_core::Ikm> {
-    // Open YubiKey via PC/SC.
+    // The YubiKey serializes operations across its interfaces and is briefly
+    // unavailable on the OTP HID interface right after a touch-triggered PIV
+    // operation on CCID. So read the HMAC factor (HID) first, before the ECDH
+    // touch; the IKM is ECDH || HMAC regardless of the order we read them in.
+    let hmac_response = if mode == IkmMode::Layered {
+        Some(hmac::challenge_response()?)
+    } else {
+        None
+    };
+
+    // Open YubiKey via PC/SC for the PIV operations.
     let mut yubikey = yubikey::YubiKey::open().map_err(|_| Error::DeviceNotFound)?;
 
     // Verify PIN (required for PIV key operations).
@@ -56,15 +66,12 @@ pub fn derive_ikm(mode: IkmMode, pin: &[u8]) -> Result<ykdf_core::Ikm> {
     // Perform self-ECDH: ECDH(private_key, own_public_key).
     let ecdh_secret = piv::ecdh(&mut yubikey, &peer_point)?;
 
-    // Drop the PC/SC connection before opening USB HID for HMAC.
+    // Drop the PC/SC connection.
     drop(yubikey);
 
-    // Move the ECDH secret directly (no extra copy).
+    // Assemble IKM = ECDH || HMAC (no extra copy of the ECDH secret).
     let mut ikm = ecdh_secret;
-
-    if mode == IkmMode::Layered {
-        eprintln!("Touch your YubiKey again for HMAC...");
-        let hmac_response = hmac::challenge_response()?;
+    if let Some(hmac_response) = hmac_response {
         ikm.extend_from_slice(&hmac_response);
     }
 

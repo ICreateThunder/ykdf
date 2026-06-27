@@ -47,16 +47,37 @@ because it is interrupted before releasing, it leaves the interface driverless
 (no hidraw node) until the key is re-plugged. `ykman` reads the same factor over
 **hidraw** (the kernel driver) with no detach and no hang.
 
-Recommended direction: replace the `rusb`/libusb HMAC path with a hidraw /
-`hidapi` implementation. This:
+Implemented: `ykdf-yubikey` now talks to the OTP HID over the Linux `hidraw`
+interface with a small in-tree implementation of the OTP frame protocol (both
+the challenge-response read and slot-2 programming), replacing `yubikey-hmac-otp`.
+This:
 
-- fixes the Linux hang and the driver-corruption-on-failure,
-- is cross-platform (`hidapi` covers Linux hidraw, the Windows native HID API,
-  and macOS), which also removes the original libusb Windows blocker, and
-- drops the `rusb` / `libusb1-sys` dependency.
+- fixes the Linux hang and the driver-corruption-on-failure (no kernel-driver
+  detach), and bounds the status polling so it errors instead of blocking,
+- drops the `rusb` / `libusb1-sys` dependency, and
+- is structured so the Windows native HID API and macOS can be added later
+  behind the same interface (which would also clear the original libusb Windows
+  blocker).
 
 It still requires hidraw access permission (a udev / `uaccess` rule) for non-root
-use, but the failure mode becomes a clean error rather than a hang.
+use, but the failure mode is now a clean error rather than a hang. Verified on
+hardware: the hidraw read reproduces the same HMAC as `ykman`.
+
+## One operation at a time: read HMAC before the PIV touch
+
+The YubiKey serializes operations across all its interfaces (OTP-HID, FIDO-HID,
+CCID) and supports only one connection at a time at the hardware level
+(<https://developers.yubico.com/Mobile/Concepts.html>). In practice, right after
+a **touch-triggered** PIV operation on CCID, the device is briefly (observed
+~6 s) unavailable on the OTP-HID interface: a `--layered` derivation that read
+HMAC immediately after the ECDH touch would time out on the HID read.
+
+The fix is ordering, not waiting: `derive_ikm` reads the **HMAC factor (HID)
+first**, then performs the touch-triggered ECDH (CCID) **last**, so no HID
+operation ever follows the touch. The IKM is `ECDH || HMAC` regardless of read
+order, so the output is unchanged. The HMAC read also keeps a short bounded retry
+as a safety net. Verified on hardware: the desktop `--layered` output now matches
+the Android NFC value byte-for-byte.
 
 ## gpg / scdaemon contention (CCID)
 
