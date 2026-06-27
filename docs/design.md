@@ -113,10 +113,12 @@ ykdf/
 │   │
 │   └── ykdf-yubikey/           # YubiKey interaction layer (desktop)
 │       └── src/
+│           ├── error.rs        # Error enum
 │           ├── piv.rs          # PIV ECDH (slot 9d, self-ECDH via cert)
 │           ├── hmac.rs         # HMAC-SHA1 challenge-response (OTP slot 2)
 │           ├── scd.rs          # scdaemon passthrough transport
-│           └── lib.rs          # derive_ikm() orchestration
+│           ├── provision.rs    # ykdf init: slot 9d gen/import + slot 2 programming
+│           └── lib.rs          # derive_ikm() orchestration + transport selection
 │
 └── apps/
     ├── cli/                    # Linux command-line tool (ykdf)
