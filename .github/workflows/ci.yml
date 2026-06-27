@@ -63,6 +63,29 @@ jobs:
         working-directory: references/go
         run: go test ./...
 
+  c-conformance:
+    runs-on: ubuntu-latest
+    # Debian trixie ships OpenSSL >= 3.5, whose providers do native ML-KEM /
+    # ML-DSA seed key generation; ubuntu-latest still has OpenSSL 3.0.
+    container: debian:trixie-slim
+    timeout-minutes: 10
+    steps:
+      # git must exist before actions/checkout runs inside the container.
+      - name: Install toolchain
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git gcc make pkg-config libsodium-dev libssl-dev python3 ca-certificates
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Show OpenSSL version
+        run: openssl version
+      # The independent C reference (libsodium + OpenSSL) must reproduce every
+      # byte in vectors/v1.json. With the Go reference this is the second,
+      # primitive-stack-independent pass of the 1.0 conformance gate.
+      - name: Build and run golden vectors
+        working-directory: references/c
+        run: make test
+
   wasm-check:
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -9,6 +9,14 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 
 ### Added
 
+- Independent C reference implementation under `references/c/`, written from
+  `docs/SPEC.md` on a third primitive stack (libsodium for Argon2id, OpenSSL
+  >= 3.5 for SHAKE and native ML-KEM / ML-DSA seed key generation, hand-written
+  HKDF). It reproduces every byte of `vectors/v1.json` (all 32 vectors, stage by
+  stage) and runs clean under AddressSanitizer / UBSan. A `c-conformance` CI job
+  runs it in a Debian trixie container. With the Go reference, the
+  cross-implementation conformance gate for the frozen v1 format is now met on
+  two independent stacks (see `references/README.md`).
 - Independent Go reference implementation under `references/go/`, written from
   `docs/SPEC.md` to corroborate the canonical Rust core. It reproduces every
   byte of `vectors/v1.json` (all 32 vectors, stage by stage) with hand-written

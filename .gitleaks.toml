@@ -13,4 +13,6 @@ paths = [
   '''fixtures/.*\.pem''',
   # Deterministic public golden test vectors (hex, not secrets).
   '''(?:^|/)vectors/.*\.json$''',
+  # Generated reference-impl build artifacts that transcribe those same vectors.
+  '''(?:^|/)references/.*/build/''',
 ]
