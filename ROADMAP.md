@@ -25,7 +25,9 @@ outputs.
 ## Now - toward 1.0
 
 - **Independent reference implementation(s)** consuming `vectors/v1.json` - the
-  1.0 gate (below). Go (Cloudflare circl) first, then C/C++.
+  1.0 gate (below). The Go reference (Cloudflare circl) is in tree under
+  `references/go/` and passes all 32 vectors; a C/C++ reference (libsodium +
+  liboqs) is next, as a battle-tested cross-check.
 - **Cheap hardening:** move secrets passed as CLI arguments (`--hmac-secret`,
   `--mgmt-key`, `--import`) to file/stdin/fd input; SBOM on releases; an MSRV
   policy with a CI check.
