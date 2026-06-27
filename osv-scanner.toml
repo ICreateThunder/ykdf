@@ -1,10 +1,13 @@
-# Configuration for osv-scanner / the OpenSSF Scorecard Vulnerabilities check.
+# Configuration for osv-scanner: the PR-time `osv-scan` CI job, the local
+# scripts/check-supply-chain.sh step, and the weekly OpenSSF Scorecard
+# Vulnerabilities check all read it.
 #
-# The detached manual tooling crates (fuzz/, timing/) do not commit a
-# Cargo.lock, so the scanner only evaluates the shipped product's dependency
-# graph (the workspace Cargo.lock). The single remaining advisory is a
-# transitive dependency that is never reached at runtime, documented below and
-# also ignored in .cargo/audit.toml and deny.toml.
+# Scope: the shipped product's dependency graph (the workspace Cargo.lock) and
+# the Go reference module (references/go/go.sum). The detached manual tooling
+# crates (fuzz/, timing/) do not commit a Cargo.lock, so they are not scanned.
+# The single remaining advisory is a transitive dependency that is never reached
+# at runtime, documented below and also ignored in .cargo/audit.toml and
+# deny.toml.
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2023-0071"
