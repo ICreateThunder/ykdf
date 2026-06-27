@@ -84,9 +84,62 @@ the Android NFC value byte-for-byte.
 `gpg-agent`'s `scdaemon` claims the YubiKey CCID interface exclusively. While it
 holds the card, PC/SC clients (opensc-tool, and YKDF's PIV path) get
 "Reader in use by another application". `gpgconf --kill scdaemon` releases it
-(scdaemon re-spawns on demand). The PIV path should surface this as a clear
-"smartcard busy" error and optionally retry, rather than failing opaquely. Note
-this affects only the CCID/smartcard interface, not the OTP HID interface.
+(scdaemon re-spawns on demand). Note this affects only the CCID/smartcard
+interface, not the OTP HID interface.
+
+Implemented: `yubikey::YubiKey::open()` silently skips a reader it cannot connect
+to, so an exclusively-held card collapses into a misleading "no YubiKey found".
+The open path now re-probes the readers on failure and, if one reports a PC/SC
+sharing violation, surfaces a clear `SmartcardBusy` error naming the
+`gpgconf --kill scdaemon` remedy instead of `DeviceNotFound`. The CLI runs this
+check before prompting for the PIN, so a busy card fails fast.
+
+Hardware finding (GnuPG 2.4.9, `disable-ccid` set so scdaemon uses pcscd):
+scdaemon connects to the card in **exclusive** mode and holds it for the
+**lifetime of the daemon**, not just during an operation. Verified: with
+scdaemon merely running and idle (no `gpg --card-edit`, no active operation),
+`ykdf` still gets `SCARD_E_SHARING_VIOLATION`. Consequences for the design:
+
+- **No auto-retry.** scdaemon does not release the card on its own, so a bounded
+  retry would only delay the actionable error. We removed that idea after testing.
+- **`SCD RESET` is insufficient.** `gpg-connect-agent "SCD RESET" /bye` returns
+  `OK` and resets the card but scdaemon keeps its PC/SC handle; `ykdf` stays
+  blocked.
+- **Killing is the only release over PC/SC.** `gpgconf --kill scdaemon` drops the
+  handle; scdaemon re-spawns and re-grabs on the next gpg card operation, so it is
+  a hand-off, not a permanent fix.
+
+To coexist without the kill hand-off, `ykdf` can route its PIV APDUs **through**
+gpg-agent's scdaemon via the Assuan `SCD APDU` passthrough (scdaemon runs
+`--multi-server` for exactly this). scdaemon remains the sole card owner and
+multiplexes, so gpg keeps working. This is implemented (`ykdf-yubikey::scd`,
+selected by `--transport`/`YKDF_TRANSPORT`, default auto-detect) and reuses the
+raw-APDU PIV sequence from the Android NFC transport.
+
+Implementation notes (hardware-verified on the YK5 NFC):
+
+- Only the **PIV/ECDH** factor goes through scdaemon (CCID). The HMAC factor is
+  HID-only over USB, so layered mode still reads it over hidraw (a separate
+  interface scdaemon does not hold), HMAC-first as in the direct path.
+- scdaemon's `SCD APDU` passes APDUs raw: it does **not** auto-follow ISO-7816
+  `61xx` response chaining, so the cert read issues GET RESPONSE itself.
+- Assuan `D` lines are binary with only `%`/CR/LF escaped (read as bytes, not
+  UTF-8). `SCD SERIALNO` reports on an `S` status line and returns `OK`/`ERR`;
+  "does scdaemon hold the card?" checks `OK` vs `ERR`, not payload contents.
+- Auto-detection routes to scdaemon only when it actually holds the card (probed
+  via `SCD SERIALNO`), so a card locked by a *different* application (Yubico
+  Authenticator, a PKCS#11 module, ...) yields the generic "smartcard busy" error
+  rather than a misleading scdaemon failure. The trade-off of the passthrough is a
+  dependency on gpg-agent, which is why it is opt-in / auto-fallback, not the
+  default for non-gpg users.
+
+## hidraw access (udev)
+
+The OTP HID node (`/dev/hidraw*`, USB interface 0) is root-only by default, so
+`--layered` needs `sudo` without a udev rule. `dist/udev/70-ykdf.rules` grants
+the logged-in seat user access via systemd-logind `uaccess`, scoped to interface
+0 (OTP) of any YubiKey (vendor 0x1050); interface 1 (FIDO) is left to Yubico's
+own rules. The failure mode without it is a clean permission error, not a hang.
 
 ## Net architecture
 

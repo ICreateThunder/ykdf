@@ -87,9 +87,11 @@ fn authenticate_mgm(yubikey: &mut YubiKey, source: MgmKeySource, pin: &[u8]) -> 
 ///
 /// # Errors
 ///
-/// Returns `Error::DeviceNotFound` if no `YubiKey` is present.
+/// Returns `Error::DeviceNotFound` if no `YubiKey` is present, or
+/// `Error::SmartcardBusy` if a reader is held by another application (e.g.
+/// `scdaemon`).
 pub fn open() -> crate::Result<YubiKey> {
-    YubiKey::open().map_err(|_| Error::DeviceNotFound)
+    crate::open_yubikey()
 }
 
 /// Report whether PIV slot 9d already holds a key or certificate.

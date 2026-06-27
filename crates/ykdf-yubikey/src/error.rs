@@ -6,6 +6,9 @@ pub type Result<T> = core::result::Result<T, Error>;
 pub enum Error {
     /// No `YubiKey` device found.
     DeviceNotFound,
+    /// The `YubiKey` smartcard (PC/SC) is held exclusively by another
+    /// application, commonly `gpg-agent`'s `scdaemon`.
+    SmartcardBusy,
     /// PIV PIN verification failed.
     WrongPin {
         /// Remaining PIN attempts.
@@ -51,12 +54,20 @@ pub enum Error {
     },
     /// `YubiKey` PIV operation error.
     Piv(String),
+    /// Error talking to gpg-agent's scdaemon (the passthrough transport).
+    Scd(String),
 }
 
 impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
             Self::DeviceNotFound => write!(f, "no YubiKey device found"),
+            Self::SmartcardBusy => write!(
+                f,
+                "the YubiKey smartcard is in use by another application (e.g. \
+                 gpg-agent's scdaemon, Yubico Authenticator, ykman, or a browser/SSH \
+                 PKCS#11 module); close it and retry. For gpg, run `gpgconf --kill scdaemon`"
+            ),
             Self::WrongPin { retries } => {
                 write!(f, "wrong PIN ({retries} attempts remaining)")
             }
@@ -84,6 +95,7 @@ impl core::fmt::Display for Error {
                 write!(f, "programming HMAC slot 2 failed: {detail}")
             }
             Self::Piv(detail) => write!(f, "PIV operation failed: {detail}"),
+            Self::Scd(detail) => write!(f, "gpg-agent/scdaemon transport failed: {detail}"),
         }
     }
 }
