@@ -16,6 +16,8 @@ Start at the top-level [README](../README.md) for the overview and quick start.
 
 - [SPEC.md](SPEC.md) - the byte-level v1 derivation format (canonical), with
   golden vectors in [vectors/v1.json](../vectors/v1.json).
+- [references/](../references/README.md) - independent reimplementations of the
+  format (Go in tree, C/C++ planned) that must reproduce every golden vector.
 - [transport-notes.md](transport-notes.md) - hardware-verified desktop transport
   details (PC/SC, hidraw, scdaemon passthrough).
 - [assurance-case.md](assurance-case.md) - the security assurance argument and

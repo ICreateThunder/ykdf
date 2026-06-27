@@ -9,6 +9,13 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 
 ### Added
 
+- Independent Go reference implementation under `references/go/`, written from
+  `docs/SPEC.md` to corroborate the canonical Rust core. It reproduces every
+  byte of `vectors/v1.json` (all 32 vectors, stage by stage) with hand-written
+  HKDF/SHAKE, Cloudflare circl for ML-KEM/ML-DSA keygen, and `x/crypto` Argon2id,
+  plus encapsulate/decapsulate and sign/verify round-trips. A new
+  `go-conformance` CI job runs it. This is the first half of the 1.0
+  cross-implementation conformance gate (see `references/README.md`).
 - Bundled udev rule `dist/udev/70-ykdf.rules` granting the logged-in user access
   to the YubiKey OTP HID interface, so layered mode no longer needs `sudo`. A new
   README "Linux permissions" section documents PC/SC, the udev rule, and the

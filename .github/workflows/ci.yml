@@ -41,6 +41,28 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - run: cargo test --workspace
 
+  go-conformance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: references/go/go.mod
+          cache-dependency-path: references/go/go.sum
+      # The independent Go reference implementation must reproduce every byte in
+      # vectors/v1.json. This is the cross-implementation conformance gate for
+      # the frozen v1 format (see references/README.md and ROADMAP.md).
+      - name: gofmt
+        working-directory: references/go
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; echo 'run gofmt -w .'; exit 1; }
+      - name: go vet
+        working-directory: references/go
+        run: go vet ./...
+      - name: go test (golden vectors)
+        working-directory: references/go
+        run: go test ./...
+
   wasm-check:
     runs-on: ubuntu-latest
     timeout-minutes: 10
