@@ -70,12 +70,14 @@ jobs:
     container: debian:trixie-slim
     timeout-minutes: 10
     steps:
-      # git must exist before actions/checkout runs inside the container.
+      # git must exist before actions/checkout runs inside the container, and
+      # build-essential pulls gcc, make, and libc6-dev (the C headers a bare gcc
+      # lacks under --no-install-recommends).
       - name: Install toolchain
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            git gcc make pkg-config libsodium-dev libssl-dev python3 ca-certificates
+            git build-essential pkg-config libsodium-dev libssl-dev python3 ca-certificates
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Show OpenSSL version
         run: openssl version

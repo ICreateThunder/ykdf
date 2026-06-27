@@ -176,8 +176,11 @@ static int hkdf_expand(const char *md, const uint8_t prk[YKDF_MASTER_LEN],
 		         got == YKDF_MASTER_LEN;
 		EVP_MAC_CTX_free(ctx);
 		EVP_MAC_free(mac);
-		if (!ok)
+		if (!ok) {
+			/* prev may hold T(i-1), derived from the master key. */
+			sodium_memzero(prev, sizeof prev);
 			return -1;
+		}
 		prev_len = YKDF_MASTER_LEN;
 		size_t take = out_len - done < YKDF_MASTER_LEN ? out_len - done
 		                                               : YKDF_MASTER_LEN;
