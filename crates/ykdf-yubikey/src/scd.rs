@@ -15,12 +15,17 @@
 //! HMAC-SHA1 challenge on slot 2.
 
 use std::fmt::Write as _;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::process::Command;
 
 use x509_cert::der::Decode;
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
+
+/// Initial capacity for a single Assuan response line. Sized so a line carrying
+/// secret bytes (the small GA/HMAC responses) never reallocates, which would
+/// otherwise leave un-zeroized fragments behind.
+const LINE_CAP: usize = 1024;
 
 use crate::IkmMode;
 use crate::error::Error;
@@ -102,23 +107,21 @@ pub(crate) fn scdaemon_holds_card() -> bool {
 }
 
 /// A minimal Assuan client connection to gpg-agent, used to send `SCD` commands.
+///
+/// Reads are done directly from the socket into `Zeroizing` buffers (no
+/// `BufReader`), so no internal read-ahead buffer can retain a copy of a response
+/// that carried secret bytes.
 struct Assuan {
-    reader: BufReader<UnixStream>,
-    writer: UnixStream,
+    stream: UnixStream,
 }
 
 impl Assuan {
     /// Connect to the running gpg-agent and consume its greeting.
     fn connect() -> crate::Result<Self> {
         let path = agent_socket_path()?;
-        let writer = UnixStream::connect(&path)
+        let stream = UnixStream::connect(&path)
             .map_err(|e| Error::Scd(format!("cannot connect to gpg-agent at {path}: {e}")))?;
-        let reader = BufReader::new(
-            writer
-                .try_clone()
-                .map_err(|e| Error::Scd(format!("cannot clone agent socket: {e}")))?,
-        );
-        let mut conn = Self { reader, writer };
+        let mut conn = Self { stream };
         let greeting = conn.read_line()?;
         if !greeting.starts_with(b"OK") {
             return Err(Error::Scd(format!(
@@ -129,29 +132,29 @@ impl Assuan {
         Ok(conn)
     }
 
-    /// Ask scdaemon for the card serial, opening the card if needed. Returns the
-    /// raw serial bytes; an error means scdaemon could not reach a card (no card,
-    /// or held by a non-scdaemon application).
-    fn serialno(&mut self) -> crate::Result<Vec<u8>> {
+    /// Ask scdaemon for the card serial, opening the card if needed. An error
+    /// means scdaemon could not reach a card (no card, or held by a non-scdaemon
+    /// application).
+    fn serialno(&mut self) -> crate::Result<Zeroizing<Vec<u8>>> {
         self.command("SCD SERIALNO")
     }
 
     /// Send one Assuan command and collect any `D` data until `OK`/`ERR`.
     ///
-    /// Lines are read as raw bytes: Assuan only escapes `%`, CR, and LF in `D`
-    /// data, so a response (e.g. a certificate) is otherwise arbitrary binary and
-    /// is not valid UTF-8.
-    fn command(&mut self, line: &str) -> crate::Result<Vec<u8>> {
-        self.writer
+    /// Lines are read as raw bytes into `Zeroizing` buffers: Assuan only escapes
+    /// `%`, CR, and LF in `D` data, so a response (e.g. an APDU result carrying
+    /// key material) is otherwise arbitrary binary and is not valid UTF-8.
+    fn command(&mut self, line: &str) -> crate::Result<Zeroizing<Vec<u8>>> {
+        (&self.stream)
             .write_all(line.as_bytes())
-            .and_then(|()| self.writer.write_all(b"\n"))
+            .and_then(|()| (&self.stream).write_all(b"\n"))
             .map_err(|e| Error::Scd(format!("write failed: {e}")))?;
-        let mut data = Vec::new();
+        let mut data = Zeroizing::new(Vec::with_capacity(LINE_CAP));
         loop {
             let line = self.read_line()?;
             if let Some(rest) = line.strip_prefix(b"D ") {
                 decode_percent(rest, &mut data);
-            } else if line == b"OK" || line.starts_with(b"OK ") {
+            } else if line.as_slice() == b"OK" || line.starts_with(b"OK ") {
                 return Ok(data);
             } else if let Some(err) = line.strip_prefix(b"ERR ") {
                 return Err(Error::Scd(format!(
@@ -163,19 +166,27 @@ impl Assuan {
         }
     }
 
-    /// Read one line (raw bytes) from the agent, stripped of its trailing CR/LF.
-    fn read_line(&mut self) -> crate::Result<Vec<u8>> {
-        let mut buf = Vec::new();
-        let n = self
-            .reader
-            .read_until(b'\n', &mut buf)
-            .map_err(|e| Error::Scd(format!("read failed: {e}")))?;
-        if n == 0 {
-            return Err(Error::Scd("gpg-agent closed the connection".to_owned()));
+    /// Read one line (raw bytes) from the agent into a `Zeroizing` buffer,
+    /// stripped of its trailing CR/LF.
+    fn read_line(&mut self) -> crate::Result<Zeroizing<Vec<u8>>> {
+        let mut buf = Zeroizing::new(Vec::with_capacity(LINE_CAP));
+        let mut byte = [0u8; 1];
+        loop {
+            let n = (&self.stream)
+                .read(&mut byte)
+                .map_err(|e| Error::Scd(format!("read failed: {e}")))?;
+            if n == 0 {
+                return Err(Error::Scd("gpg-agent closed the connection".to_owned()));
+            }
+            if byte[0] == b'\n' {
+                break;
+            }
+            buf.push(byte[0]);
         }
-        while matches!(buf.last(), Some(b'\n' | b'\r')) {
+        if buf.last() == Some(&b'\r') {
             buf.pop();
         }
+        byte.zeroize(); // the last byte read may belong to a secret
         Ok(buf)
     }
 
@@ -186,43 +197,43 @@ impl Assuan {
     /// available") is not auto-followed the way a PC/SC reader would: we issue
     /// GET RESPONSE ourselves and concatenate until a non-`61` status, mirroring
     /// the Android NFC handler.
-    fn apdu(&mut self, apdu: &[u8]) -> crate::Result<Vec<u8>> {
+    fn apdu(&mut self, apdu: &[u8]) -> crate::Result<Zeroizing<Vec<u8>>> {
         let mut resp = self.send_apdu(apdu)?;
         while resp.len() >= 2 && resp[resp.len() - 2] == 0x61 {
             let le = resp[resp.len() - 1];
-            resp.truncate(resp.len() - 2); // drop the 61 xx status
+            let keep = resp.len() - 2;
+            resp.truncate(keep); // drop the 61 xx status
             let more = self.send_apdu(&[0x00, 0xC0, 0x00, 0x00, le])?; // GET RESPONSE
-            resp.extend_from_slice(&more);
+            resp.extend_from_slice(&more[..]);
         }
         Ok(resp)
     }
 
     /// Send one raw APDU via `SCD APDU` and return its response (data + SW).
-    fn send_apdu(&mut self, apdu: &[u8]) -> crate::Result<Vec<u8>> {
-        let mut hexs = String::with_capacity(apdu.len() * 2 + 9);
+    ///
+    /// The hex command is built in a `Zeroizing` string: an APDU may carry the
+    /// PIN (the VERIFY command), so the encoded form must not outlive the call
+    /// un-zeroized.
+    fn send_apdu(&mut self, apdu: &[u8]) -> crate::Result<Zeroizing<Vec<u8>>> {
+        let mut hexs = Zeroizing::new(String::with_capacity(apdu.len() * 2 + 9));
         hexs.push_str("SCD APDU ");
         for b in apdu {
-            let _ = write!(hexs, "{b:02X}");
+            let _ = write!(&mut *hexs, "{b:02X}");
         }
         self.command(&hexs)
     }
 
     /// Send `apdu` and require a `9000` status word, returning the response data.
-    fn apdu_ok(&mut self, apdu: &[u8], what: &str) -> crate::Result<Vec<u8>> {
+    fn apdu_ok(&mut self, apdu: &[u8], what: &str) -> crate::Result<Zeroizing<Vec<u8>>> {
         let resp = self.apdu(apdu)?;
         let (data, sw) = split_sw(&resp, what)?;
         classify_sw(sw, what)?;
-        Ok(data.to_vec())
+        Ok(Zeroizing::new(data.to_vec()))
     }
 
     fn select(&mut self, aid: &[u8]) -> crate::Result<()> {
-        let mut apdu = vec![
-            0x00,
-            INS_SELECT,
-            0x04,
-            0x00,
-            u8::try_from(aid.len()).unwrap(),
-        ];
+        let lc = u8::try_from(aid.len()).map_err(|_| Error::Scd("AID too long".to_owned()))?;
+        let mut apdu = vec![0x00, INS_SELECT, 0x04, 0x00, lc];
         apdu.extend_from_slice(aid);
         self.apdu_ok(&apdu, "SELECT")?;
         Ok(())
@@ -279,20 +290,19 @@ impl Assuan {
     /// Perform self-ECDH on slot 9d with the given peer point.
     fn ecdh(&mut self, point: &[u8]) -> crate::Result<Zeroizing<Vec<u8>>> {
         // GENERAL AUTHENTICATE: 7C { 82 00 (response placeholder), 85 <point> }.
-        let inner_len = 2 + 2 + point.len();
-        let mut data = Vec::with_capacity(2 + inner_len);
+        let point_len =
+            u8::try_from(point.len()).map_err(|_| Error::Scd("peer point too long".to_owned()))?;
+        let inner_len = u8::try_from(2 + 2 + point.len())
+            .map_err(|_| Error::Scd("GA template too long".to_owned()))?;
+        let mut data = Vec::with_capacity(2 + 2 + 2 + point.len());
         data.push(0x7C);
-        data.push(u8::try_from(inner_len).unwrap());
-        data.extend_from_slice(&[0x82, 0x00, 0x85, u8::try_from(point.len()).unwrap()]);
+        data.push(inner_len);
+        data.extend_from_slice(&[0x82, 0x00, 0x85, point_len]);
         data.extend_from_slice(point);
 
-        let mut apdu = vec![
-            0x00,
-            INS_GENERAL_AUTHENTICATE,
-            ALG_ECC_P256,
-            SLOT_9D,
-            u8::try_from(data.len()).unwrap(),
-        ];
+        let lc =
+            u8::try_from(data.len()).map_err(|_| Error::Scd("GA command too long".to_owned()))?;
+        let mut apdu = vec![0x00, INS_GENERAL_AUTHENTICATE, ALG_ECC_P256, SLOT_9D, lc];
         apdu.extend_from_slice(&data);
         apdu.push(0x00); // Le
 
