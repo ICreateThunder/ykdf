@@ -37,7 +37,7 @@ Verified in this environment:
 `apps/android/build-native.sh` stages the `.so` into `app/src/main/jniLibs/`,
 which Gradle packages by default.
 
-## R2: NFC transport (feasibility, pending on-device confirmation)
+## R2: NFC transport (proven on hardware)
 
 The decisive point: Android talks to a YubiKey over `android.nfc.tech.IsoDep`,
 which is ISO 14443-4 and therefore **APDU-native**. Every exchange is an APDU,
@@ -50,15 +50,16 @@ channel:
 | PIV ECDH (slot 9d) | PIV, AID `A0 00 00 03 08` | SELECT, VERIFY PIN, GENERAL AUTHENTICATE (INS `0x87`) for key agreement; card returns the shared point |
 | HMAC-SHA1 CR (slot 2) | OTP | challenge-response over the same IsoDep connection |
 
-Yubico's `yubikit-android` already implements both over NFC (`PivSession` for
-PIV key agreement, `YubiOtpSession.calculateHmacSha1` for challenge-response),
-so the spike does not need to hand-roll the APDU sequences; it can either use the
-library or mirror its exchanges. The on-device hardware step (a phone plus a
-YubiKey 5 NFC) is what remains to confirm end to end, in particular that slot 2
-challenge-response is reachable over NFC on the target keys.
+Rather than depend on Yubico's `yubikit-android`, the shipped app
+(`apps/android`, merged in #50) hand-rolls a small, dependency-free IsoDep APDU
+handler for supply-chain control, mirroring the desktop sequence exactly (SELECT
+PIV, GET DATA cert, VERIFY PIN, GENERAL AUTHENTICATE; SELECT OTP, challenge-
+response). Both factors were confirmed reachable over NFC on a YubiKey 5 NFC.
 
 The derived-secret bytes from either or both factors become the `ikm` argument
-to `Native.derive`, after which the derivation is identical to the CLI.
+to `Native.derive`, after which the derivation is identical to the CLI - and was
+verified **byte-identical** to the desktop CLI on a Pixel 6 Pro, for both
+standard and layered modes.
 
 ## Architecture
 
@@ -66,7 +67,7 @@ to `Native.derive`, after which the derivation is identical to the CLI.
 YubiKey 5 NFC
    | ISO 14443-4 (IsoDep, APDUs)
    v
-Kotlin NFC layer (yubikit-android: PivSession / YubiOtpSession)   <-- TODO, hardware
+Kotlin NFC layer (custom IsoDep APDU handler, no yubikit)
    | secret bytes (IKM)
    v
 Native.derive(ikm, pipeline, profile, purpose, index)   [JNI]
@@ -78,11 +79,11 @@ crates/ykdf-jni  ->  ykdf-core (deterministic, no I/O)
 secret bytes  ->  Compose UI / WireGuard config / key export
 ```
 
-## Deferred to the hardware step
+## Outcome
 
-- Wire `MainActivity.deriveFromNfc()` to IsoDep and the YubiKey sessions.
-- Confirm slot 2 HMAC challenge-response over NFC on the target YubiKeys.
-- Run the Gradle build and reconcile the AGP/Kotlin/Compose/SDK version matrix
-  (not executed in the spike environment; see `apps/android/README.md`).
-- On-device equivalence: derive on Android and on the CLI from the same YubiKey,
-  assert byte-identical output (the same shared-backup acceptance test, on NFC).
+The spike graduated into the merged Android app (#50): a Jetpack Compose
+reader-mode UI over the custom IsoDep handler, with the Gradle/AGP/Kotlin/Compose
+matrix reconciled (see `apps/android`). On-device equivalence was confirmed -
+deriving on Android and on the CLI from the same YubiKey yields byte-identical
+output for both standard and layered modes. Remaining Android work (full app
+features, signed APK) is tracked in [ROADMAP.md](../ROADMAP.md).

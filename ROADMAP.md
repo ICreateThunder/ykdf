@@ -12,26 +12,38 @@ is additive within v1 or strictly out-of-process (new platforms, tooling). A
 format change would be a new `v2` namespace, not a silent modification of v1
 outputs.
 
-## Now - 0.1.x (maintenance)
+## Shipped
 
-- Bug fixes and documentation improvements.
-- OpenSSF Best Practices: achieve and maintain the Silver level.
-- Move secrets currently passed as CLI arguments (`--hmac-secret`, `--mgmt-key`,
-  `--import`) to file/stdin/fd input, to keep them out of the process table.
-- Run the hardware shared-backup acceptance test (two devices, same scalar + HMAC
-  secret, assert byte-identical derivation).
+- Core derivation engine, YubiKey desktop transport, Linux CLI.
+- Key profiles including ML-KEM (FIPS 203) and ML-DSA (FIPS 204) post-quantum.
+- Frozen v1 format + golden vectors; OpenSSF Passing and Silver badges.
+- Signed releases through 0.2.0 (cosign signatures + SLSA provenance).
+- Android NFC app (custom IsoDep APDU handler + JNI over the core).
+- Desktop transport hardening: pure-Rust hidraw HMAC (libusb dropped) and a
+  scdaemon passthrough so the PIV path coexists with gpg.
 
-## Next - 0.2.0 (platform reach, core unchanged)
+## Now - toward 1.0
 
-- **WebAssembly:** package the already-`wasm32`-clean core for use from the
-  browser / JS runtimes. The core is the smaller, lower-risk first port.
-- Tooling and ergonomics improvements to the CLI that do not touch the format.
+- **Independent reference implementation(s)** consuming `vectors/v1.json` - the
+  1.0 gate (below). Go (Cloudflare circl) first, then C/C++.
+- **Cheap hardening:** move secrets passed as CLI arguments (`--hmac-secret`,
+  `--mgmt-key`, `--import`) to file/stdin/fd input; SBOM on releases; an MSRV
+  policy with a CI check.
+- **Hardware acceptance:** the shared-backup test (two devices, same scalar +
+  HMAC secret, assert byte-identical derivation) and the destructive slot-2
+  write-path test on a spare key.
+- App-relevant ergonomics: a WireGuard config helper, shell completions, an AUR
+  package.
 
-## Later - Android
+## Later
 
-- JNI + Kotlin bindings over the core, with NFC-based YubiKey access.
-- Branching to platforms happens only after the core surface is consolidated and
-  stable, to avoid re-porting churn.
+- Android build-out on the proven transport (WireGuard config + QR share,
+  ML-KEM/ML-DSA key screens, signed APK).
+- A Windows desktop port: the PIV path is portable over PC/SC, and the libusb
+  blocker for the HMAC factor is resolved by the hidraw work, leaving a native
+  Windows-HID port.
+- FrodoKEM / Classic McEliece as optional / break-glass KEM profiles, gated on a
+  new DRBG-based derivation mode and crate vetting.
 
 ## 1.0.0 - conformance-gated
 
@@ -39,6 +51,12 @@ outputs.
 vectors** in `vectors/v1.json`. That cross-implementation conformance is the
 signal that the v1 format is genuinely portable and stable enough to promise
 long-term compatibility.
+
+## Deprioritized
+
+- **WebAssembly / browser:** a browser tab cannot reach the YubiKey at CLI-grade
+  security (no PC/SC; secrets cross the JS/wasm boundary). The core stays
+  `wasm32`-clean, but a browser transport is not a near-term goal.
 
 ## Explicitly out of scope
 

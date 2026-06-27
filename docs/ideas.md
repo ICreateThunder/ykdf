@@ -4,6 +4,16 @@ A log of design ideas that are out of scope for current work but worth keeping.
 Nothing here is committed to a roadmap; these are thought experiments and
 candidate features.
 
+## Open design questions
+
+- **Manifest file:** stay fully stateless (context strings documented externally)
+  vs. an optional local manifest listing derived keys for usability. Leaning
+  stateless to avoid introducing state to sync and back up; any manifest would be
+  a non-authoritative convenience, never required to re-derive.
+
+(The HMAC challenge strategy - fixed `b"ykdf-v1"` vs. context-as-challenge - is
+settled: the fixed challenge is frozen into the v1 format.)
+
 ## Exportable / importable slot 9d key (IMPLEMENTED)
 
 Shipped as `ykdf init --exportable` (host-generate the P-256 scalar, import to
