@@ -99,7 +99,7 @@ mod linux {
     use std::os::unix::io::AsRawFd;
     use std::path::PathBuf;
     use std::thread;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     use zeroize::Zeroizing;
 
@@ -127,7 +127,31 @@ mod linux {
     const HIDIOCSFEATURE: libc::c_ulong = ioc(3, 0x48, 0x06, HID_BUF_LEN);
     const HIDIOCGFEATURE: libc::c_ulong = ioc(3, 0x48, 0x07, HID_BUF_LEN);
 
+    /// Total time to keep retrying the exchange before giving up.
+    const RETRY_BUDGET: Duration = Duration::from_secs(8);
+    /// Pause between retries.
+    const RETRY_PAUSE: Duration = Duration::from_millis(250);
+
     pub fn challenge_response(challenge: &[u8]) -> crate::Result<Zeroizing<Vec<u8>>> {
+        // Right after a touch-triggered PIV operation on the CCID interface, the
+        // OTP HID can be briefly unresponsive (a post-touch cooldown on the
+        // device). Retry the whole exchange for a few seconds so we ride that
+        // out instead of erroring, while still bounding the total time.
+        let deadline = Instant::now() + RETRY_BUDGET;
+        loop {
+            match one_challenge_response(challenge) {
+                Ok(hmac) => return Ok(hmac),
+                Err(e) => {
+                    if Instant::now() >= deadline {
+                        return Err(e);
+                    }
+                    thread::sleep(RETRY_PAUSE);
+                }
+            }
+        }
+    }
+
+    fn one_challenge_response(challenge: &[u8]) -> crate::Result<Zeroizing<Vec<u8>>> {
         let path = find_otp_hidraw()?;
         let file = OpenOptions::new()
             .read(true)

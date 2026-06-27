@@ -18,6 +18,10 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
   factor is HID-only over USB; see `docs/transport-notes.md`. Other platforms
   are not yet implemented (the code is structured to add them behind the same
   interface).
+- `ykdf-yubikey`: layered derivation now reads the HMAC factor (HID) before the
+  touch-triggered PIV ECDH (CCID). The YubiKey serializes operations across
+  interfaces and is briefly unavailable on HID right after a PIV touch, so this
+  ordering avoids a timeout. The derived output is unchanged.
 
 ## [0.2.0] - 2026-06-26
 

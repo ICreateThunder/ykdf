@@ -63,6 +63,22 @@ It still requires hidraw access permission (a udev / `uaccess` rule) for non-roo
 use, but the failure mode is now a clean error rather than a hang. Verified on
 hardware: the hidraw read reproduces the same HMAC as `ykman`.
 
+## One operation at a time: read HMAC before the PIV touch
+
+The YubiKey serializes operations across all its interfaces (OTP-HID, FIDO-HID,
+CCID) and supports only one connection at a time at the hardware level
+(<https://developers.yubico.com/Mobile/Concepts.html>). In practice, right after
+a **touch-triggered** PIV operation on CCID, the device is briefly (observed
+~6 s) unavailable on the OTP-HID interface: a `--layered` derivation that read
+HMAC immediately after the ECDH touch would time out on the HID read.
+
+The fix is ordering, not waiting: `derive_ikm` reads the **HMAC factor (HID)
+first**, then performs the touch-triggered ECDH (CCID) **last**, so no HID
+operation ever follows the touch. The IKM is `ECDH || HMAC` regardless of read
+order, so the output is unchanged. The HMAC read also keeps a short bounded retry
+as a safety net. Verified on hardware: the desktop `--layered` output now matches
+the Android NFC value byte-for-byte.
+
 ## gpg / scdaemon contention (CCID)
 
 `gpg-agent`'s `scdaemon` claims the YubiKey CCID interface exclusively. While it
