@@ -24,10 +24,12 @@ outputs.
 
 ## Now - toward 1.0
 
-- **Independent reference implementation(s)** consuming `vectors/v1.json` - the
-  1.0 gate (below). The Go reference (Cloudflare circl) is in tree under
-  `references/go/` and passes all 32 vectors; a C/C++ reference (libsodium +
-  liboqs) is next, as a battle-tested cross-check.
+- **Independent reference implementations** consuming `vectors/v1.json` - the
+  1.0 gate (below). Both are in tree and pass all 32 vectors on independent
+  primitive stacks: Go (`references/go/`, Cloudflare circl) and C
+  (`references/c/`, libsodium + OpenSSL >= 3.5). This satisfies the
+  cross-implementation conformance requirement; the remaining 1.0 work is
+  platform and feature breadth, not the format.
 - **Cheap hardening:** move secrets passed as CLI arguments (`--hmac-secret`,
   `--mgmt-key`, `--import`) to file/stdin/fd input; SBOM on releases; an MSRV
   policy with a CI check.
@@ -53,6 +55,11 @@ outputs.
 vectors** in `vectors/v1.json`. That cross-implementation conformance is the
 signal that the v1 format is genuinely portable and stable enough to promise
 long-term compatibility.
+
+This gate is now **met**: the Go and C references in [references/](references/README.md)
+each reproduce all 32 vectors on a primitive stack independent of the Rust core
+and of each other. What remains before tagging 1.0 is breadth, not format
+stability - platform ports (Windows, the full Android app) and ergonomics.
 
 ## Deprioritized
 
