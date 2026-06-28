@@ -32,7 +32,7 @@ MATRIX=(
 capture() {
   local outfile="$1"
   : > "$outfile"
-  local i=0 total="${#MATRIX[@]}"
+  local i=0 total="${#MATRIX[@]}" failures=0
   for row in "${MATRIX[@]}"; do
     i=$((i + 1))
     # shellcheck disable=SC2086 # word-splitting the row into fields is intended
@@ -42,22 +42,40 @@ capture() {
       --purpose "$purpose" --index "$index")
     [ "$mode" = "layered" ] && args+=(--layered)
     echo "[$i/$total] $mode $profile/$pipeline (PIN + touch)..." >&2
+    # Guard the call inside `if` so one failed row (a touch timeout, a missing
+    # slot-2 secret) records a sentinel and the run continues, instead of
+    # aborting under `set -e` and losing the rows that did capture.
     local pub
-    pub="$("$YKDF" "${args[@]}")"
-    printf '%s %s %s %s %s\t%s\n' \
-      "$mode" "$profile" "$pipeline" "$purpose" "$index" "$pub" >> "$outfile"
+    if pub="$("$YKDF" "${args[@]}")"; then
+      printf '%s %s %s %s %s\t%s\n' \
+        "$mode" "$profile" "$pipeline" "$purpose" "$index" "$pub" >> "$outfile"
+    else
+      echo "  ! row failed (ykdf exited $?); recording FAILED, continuing" >&2
+      printf '%s %s %s %s %s\t%s\n' \
+        "$mode" "$profile" "$pipeline" "$purpose" "$index" "FAILED" >> "$outfile"
+      failures=$((failures + 1))
+    fi
   done
-  echo "Wrote ${total} public keys to ${outfile}." >&2
+  if [ "$failures" -gt 0 ]; then
+    echo "Wrote ${total} rows to ${outfile} (${failures} FAILED; re-run those rows)." >&2
+  else
+    echo "Wrote ${total} public keys to ${outfile}." >&2
+  fi
 }
 
 diff_captures() {
-  local a="$1" b="$2"
-  if diff -u "$a" "$b"; then
-    echo "PASS: ${a} and ${b} are byte-identical."
-  else
+  local a="$1" b="$2" rc=0
+  if ! diff -u "$a" "$b"; then
     echo "FAIL: captures differ (see the diff above)." >&2
-    return 1
+    rc=1
   fi
+  # A row that FAILED on both keys would otherwise match and read as a PASS.
+  if grep -qP '\tFAILED$' "$a" "$b" 2>/dev/null; then
+    echo "NOTE: some rows are marked FAILED (not captured); re-run them before trusting a PASS." >&2
+    rc=1
+  fi
+  [ "$rc" -eq 0 ] && echo "PASS: ${a} and ${b} are byte-identical."
+  return "$rc"
 }
 
 case "${1:-}" in

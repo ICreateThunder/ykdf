@@ -60,7 +60,7 @@ pub fn run_clone(args: &CloneArgs) -> Result<(), CliError> {
             ""
         }
     );
-    eprintln!("Insert one device at a time. Every device must accept the same PIV PIN entry.");
+    eprintln!("Insert one device at a time; each is prompted for its own PIN and touch.");
 
     let mut publics: Vec<Vec<u8>> = Vec::new();
     loop {
@@ -86,7 +86,7 @@ pub fn run_clone(args: &CloneArgs) -> Result<(), CliError> {
                 publics.push(public);
             }
             Err(e) => {
-                eprintln!("device #{} failed: {e}", publics.len() + 1);
+                crate::term::warn(&format!("device #{} failed: {e}", publics.len() + 1));
                 eprintln!("Not counted. Fix the issue and retry, or 'q' to finish.");
             }
         }
@@ -155,10 +155,10 @@ fn report_outcome(
         );
     } else {
         // Should be impossible: every device imported the same scalar.
-        eprintln!(
+        crate::term::warn(
             "WARNING: the cloned public keys differ across devices, so the import did \
              not reproduce. Do NOT rely on these as interchangeable backups; \
-             investigate before use."
+             investigate before use.",
         );
     }
 
@@ -187,7 +187,7 @@ fn resolve_mgm(args: &CloneArgs) -> Result<MgmKeySource, CliError> {
         return explicit_mgm_key(&hex).map(MgmKeySource::Explicit);
     }
     match args.mgmt_key.as_deref() {
-        None => Ok(MgmKeySource::Default),
+        None => Ok(MgmKeySource::Auto),
         Some("protected") => Ok(MgmKeySource::Protected),
         Some("derived") => Ok(MgmKeySource::Derived),
         Some(hex) => explicit_mgm_key(hex).map(MgmKeySource::Explicit),
@@ -210,23 +210,13 @@ fn reject_stdin_files(args: &CloneArgs) -> Result<(), CliError> {
     Ok(())
 }
 
-/// Prompt before overwriting an occupied slot 9d on a device. Defaults to no.
+/// Prompt before overwriting an occupied slot 9d on a device. Destructive, so
+/// require a deliberate `YES`; defaults to no.
 fn confirm_overwrite_slot9d() -> bool {
-    confirm(
+    crate::term::confirm_destructive(
         "This device's slot 9d already holds a key; cloning overwrites it (the \
-         existing key is lost). Continue? [y/N] ",
+         existing key is lost). Type YES to continue: ",
     )
-}
-
-/// Print a prompt to stderr and read a yes/no answer; default no.
-fn confirm(prompt: &str) -> bool {
-    eprint!("{prompt}");
-    let _ = io::stderr().flush();
-    let mut input = String::new();
-    if io::stdin().read_line(&mut input).is_err() {
-        return false;
-    }
-    matches!(input.trim().to_ascii_lowercase().as_str(), "y" | "yes")
 }
 
 /// Print a prompt and read one line. Returns `false` on `q`/`quit` or EOF

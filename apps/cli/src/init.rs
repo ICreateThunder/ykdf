@@ -1,4 +1,4 @@
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::Path;
 
 use zeroize::{Zeroize, Zeroizing};
@@ -52,10 +52,10 @@ pub fn run_init(args: InitArgs) -> Result<(), CliError> {
     match &piv_mode {
         PivMode::OnDevice => {
             eprintln!("Provisioning PIV slot 9d (on-device P-256, non-extractable).");
-            eprintln!(
+            crate::term::warn(
                 "WARNING: an on-device key cannot be backed up. If this YubiKey is lost, \
                  keys derived from the PIV factor are unrecoverable. Back up the derived \
-                 outputs you rely on."
+                 outputs you rely on.",
             );
         }
         PivMode::Exportable => {
@@ -153,7 +153,7 @@ fn resolve_mgm_source(args: &InitArgs) -> Result<provision::MgmKeySource, CliErr
         return explicit_mgm_key(&hex).map(MgmKeySource::Explicit);
     }
     match args.mgmt_key.as_deref() {
-        None => Ok(MgmKeySource::Default),
+        None => Ok(MgmKeySource::Auto),
         Some("protected") => Ok(MgmKeySource::Protected),
         Some("derived") => Ok(MgmKeySource::Derived),
         Some(hex) => {
@@ -252,10 +252,10 @@ pub(crate) fn read_secret_hex(path: &Path) -> Result<Zeroizing<String>, CliError
 
 /// Warn that a secret passed inline is visible in the process table.
 pub(crate) fn warn_process_table(flag: &str, file_flag: &str) {
-    eprintln!(
+    crate::term::warn(&format!(
         "warning: {flag} exposes the secret in the process table (visible to `ps`); \
          prefer {file_flag} <PATH> (or `-` for stdin)."
-    );
+    ));
 }
 
 /// Decode a hex string, returning the bytes only if they match `expected_len`.
@@ -265,19 +265,13 @@ pub(crate) fn decode_hex(input: &str, expected_len: usize) -> Option<Zeroizing<V
 }
 
 /// Prompt before overwriting OTP slot 2. Slot 2 configuration cannot be read
-/// back, so we cannot auto-detect an existing secret; default to not
-/// overwriting on any read failure.
+/// back, so we cannot auto-detect an existing secret; this is destructive, so
+/// require a deliberate `YES`.
 pub(crate) fn confirm_slot2_overwrite() -> bool {
-    eprint!(
+    crate::term::confirm_destructive(
         "Programming OTP slot 2 overwrites any existing configuration there \
-         (OTP or challenge-response). Continue? [y/N] "
-    );
-    let _ = std::io::stderr().flush();
-    let mut input = String::new();
-    if std::io::stdin().read_line(&mut input).is_err() {
-        return false;
-    }
-    matches!(input.trim().to_ascii_lowercase().as_str(), "y" | "yes")
+         (OTP or challenge-response). Type YES to continue: ",
+    )
 }
 
 #[cfg(test)]

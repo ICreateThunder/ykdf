@@ -15,7 +15,9 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
   each device in turn, and wiped on exit (never displayed, clipboarded, or
   written unless `--show`). It needs only one USB port: insert a device,
   provision, swap, repeat. `--import-file` clones an existing scalar; the
-  command verifies every device ends up sharing one slot 9d public key.
+  command verifies every device ends up sharing one slot 9d public key. Each
+  device is prompted for its own PIN, the management key is auto-detected, and
+  overwriting an occupied slot needs a typed `YES`.
 - Hardware acceptance runbook (`docs/hardware-acceptance.md`) and a helper
   (`scripts/hw-acceptance.sh`) for the two on-device checks CI cannot cover: the
   two-YubiKey shared-backup test (byte-identical derivation) and the slot-2
@@ -63,6 +65,11 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 
 ### Changed
 
+- `ykdf init` and `ykdf clone` now auto-detect the PIV management key by default
+  (try the factory key, then the PIN-protected stored key, then the PIN-derived
+  key), so the common cases no longer need `--mgmt-key`. Warnings print in red on
+  colour-capable terminals (honouring `NO_COLOR` and `CLICOLOR_FORCE`), and
+  overwriting OTP slot 2 now requires a typed `YES` rather than `y`.
 - `ykdf-yubikey`: the open path now distinguishes a smartcard held by another
   application (commonly `gpg-agent`'s `scdaemon`) from a genuinely absent device.
   `YubiKey::open()` silently skips a reader it cannot connect to, which made

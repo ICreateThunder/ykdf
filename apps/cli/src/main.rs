@@ -5,6 +5,7 @@ mod error;
 mod format;
 mod ikm;
 mod init;
+mod term;
 
 use clap::Parser;
 use cli::{Cli, Commands};

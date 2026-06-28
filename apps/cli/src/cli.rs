@@ -61,8 +61,9 @@ pub struct InitArgs {
     pub hmac_secret_file: Option<std::path::PathBuf>,
 
     /// PIV management key: 48 hex chars, or `protected`/`derived` to read a
-    /// key stored on the device; defaults to the factory key. An explicit hex
-    /// key is exposed in the process table; prefer --mgmt-key-file
+    /// key stored on the device; defaults to auto-detect (factory, then
+    /// PIN-protected, then PIN-derived). An explicit hex key is exposed in the
+    /// process table; prefer --mgmt-key-file
     #[arg(long, value_name = "HEX|protected|derived")]
     pub mgmt_key: Option<String>,
 
@@ -109,8 +110,9 @@ pub struct CloneArgs {
     pub show: bool,
 
     /// PIV management key: 48 hex chars, or `protected`/`derived` to read a key
-    /// stored on each device; defaults to the factory key. An explicit hex key
-    /// is exposed in the process table; prefer --mgmt-key-file
+    /// stored on each device; defaults to auto-detect (factory, then
+    /// PIN-protected, then PIN-derived). An explicit hex key is exposed in the
+    /// process table; prefer --mgmt-key-file
     #[arg(long, value_name = "HEX|protected|derived")]
     pub mgmt_key: Option<String>,
 
