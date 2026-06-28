@@ -17,6 +17,9 @@ pub enum Commands {
     Pubkey(PubkeyArgs),
     /// Provision a `YubiKey` for use with YKDF
     Init(InitArgs),
+    /// Clone one root to several keys in a single swap-session (the secret
+    /// stays in host RAM and is wiped on exit; never displayed or written)
+    Clone(CloneArgs),
 }
 
 #[derive(clap::Args)]
@@ -78,6 +81,53 @@ pub struct InitArgs {
     pub pin_policy: PinPolicyArg,
 
     /// Touch policy for the generated slot 9d key
+    #[arg(long, default_value = "always")]
+    pub touch_policy: TouchPolicyArg,
+}
+
+#[derive(clap::Args)]
+pub struct CloneArgs {
+    /// Also program a single shared HMAC-SHA1 secret on OTP slot 2 of every
+    /// device (layered mode)
+    #[arg(long)]
+    pub layered: bool,
+
+    /// Clone an existing slot 9d scalar (64 hex chars) read from a file, instead
+    /// of generating a fresh root. Use a real path, not `-` (stdin is reserved
+    /// for the per-device prompts)
+    #[arg(long, value_name = "PATH")]
+    pub import_file: Option<std::path::PathBuf>,
+
+    /// With --layered, read the shared 20-byte HMAC secret (40 hex chars) from a
+    /// file instead of generating one. Use a real path, not `-`
+    #[arg(long, value_name = "PATH", requires = "layered")]
+    pub hmac_secret_file: Option<std::path::PathBuf>,
+
+    /// After cloning, print the in-RAM root secret once on stderr. This defeats
+    /// the RAM-only property; for a saved copy prefer `init --exportable`
+    #[arg(long)]
+    pub show: bool,
+
+    /// PIV management key: 48 hex chars, or `protected`/`derived` to read a key
+    /// stored on each device; defaults to the factory key. An explicit hex key
+    /// is exposed in the process table; prefer --mgmt-key-file
+    #[arg(long, value_name = "HEX|protected|derived")]
+    pub mgmt_key: Option<String>,
+
+    /// Read an explicit PIV management key (48 hex chars) from a file instead of
+    /// the command line. Use a real path, not `-`
+    #[arg(long, value_name = "PATH", conflicts_with = "mgmt_key")]
+    pub mgmt_key_file: Option<std::path::PathBuf>,
+
+    /// Overwrite an occupied slot 9d / slot 2 on every device without prompting
+    #[arg(long)]
+    pub force: bool,
+
+    /// PIN policy for the imported slot 9d key
+    #[arg(long, default_value = "once")]
+    pub pin_policy: PinPolicyArg,
+
+    /// Touch policy for the imported slot 9d key
     #[arg(long, default_value = "always")]
     pub touch_policy: TouchPolicyArg,
 }

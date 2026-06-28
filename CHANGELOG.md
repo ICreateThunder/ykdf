@@ -9,6 +9,13 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 
 ### Added
 
+- `ykdf clone`: provision several YubiKeys from one root in a single
+  swap-session. The root secret (the slot 9d scalar, and with `--layered` the
+  slot 2 HMAC secret) is generated or read once, held in host RAM, pushed to
+  each device in turn, and wiped on exit (never displayed, clipboarded, or
+  written unless `--show`). It needs only one USB port: insert a device,
+  provision, swap, repeat. `--import-file` clones an existing scalar; the
+  command verifies every device ends up sharing one slot 9d public key.
 - Hardware acceptance runbook (`docs/hardware-acceptance.md`) and a helper
   (`scripts/hw-acceptance.sh`) for the two on-device checks CI cannot cover: the
   two-YubiKey shared-backup test (byte-identical derivation) and the slot-2
