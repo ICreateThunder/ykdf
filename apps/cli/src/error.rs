@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+#[derive(Debug)]
 pub enum CliError {
     /// Error from ykdf-core.
     Core(ykdf_core::Error),
@@ -33,6 +34,13 @@ pub enum CliError {
     InvalidMgmtKey,
     /// --import is not 64 hex characters (32 bytes).
     InvalidImportKey,
+    /// Failed to read a secret from a --*-file path (or stdin).
+    SecretFileRead {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    /// More than one secret was requested from stdin (`-`).
+    MultipleStdinSecrets,
 }
 
 impl CliError {
@@ -44,7 +52,8 @@ impl CliError {
             | Self::RawRequiresLength
             | Self::InvalidHmacSecret
             | Self::InvalidMgmtKey
-            | Self::InvalidImportKey => 2,
+            | Self::InvalidImportKey
+            | Self::MultipleStdinSecrets => 2,
             _ => 1,
         }
     }
@@ -88,6 +97,12 @@ impl std::fmt::Display for CliError {
             }
             Self::InvalidImportKey => {
                 write!(f, "--import must be 64 hex characters (32 bytes)")
+            }
+            Self::SecretFileRead { path, source } => {
+                write!(f, "failed to read secret from {}: {source}", path.display())
+            }
+            Self::MultipleStdinSecrets => {
+                write!(f, "only one secret can be read from stdin (`-`)")
             }
         }
     }

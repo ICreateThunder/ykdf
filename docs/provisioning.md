@@ -67,9 +67,10 @@ If you have changed the PIV management key from the factory default, tell
 `ykdf init` how to authenticate. For a key stored on the device and unlocked by
 your PIN (`ykman piv info` shows *"Management key is stored on the YubiKey,
 protected by PIN"*), use `--mgmt-key protected` (or `--mgmt-key derived` for a
-PIN-derived key); for an explicit key, pass it as `--mgmt-key <48-hex>`. Note the
-`yubikey` 0.8 backend only supports TDES management keys, not the AES-192 default
-on firmware 5.7+.
+PIN-derived key); for an explicit key, pass it from a file with
+`--mgmt-key-file <path>` (or `--mgmt-key <48-hex>`, which warns because the key
+is then visible in the process table). Note the `yubikey` 0.8 backend only
+supports TDES management keys, not the AES-192 default on firmware 5.7+.
 
 ```bash
 ykdf init --mgmt-key protected            # PIN-protected management key
@@ -102,12 +103,21 @@ ykdf init --exportable --layered
 # -> "slot 9d private key (hex): <SCALAR>"
 # -> "Generated HMAC secret ...: <HMAC>"
 
-# Device 2 (swap YubiKeys): import the SAME key and HMAC secret.
-ykdf init --import <SCALAR> --layered --hmac-secret <HMAC>
+# Device 2 (swap YubiKeys): import the SAME key and HMAC secret. Pass them via
+# files (or stdin) rather than on the command line, so the secrets do not appear
+# in the process table where another local user could read them with `ps`.
+printf %s "<SCALAR>" > scalar.hex
+printf %s "<HMAC>"   > hmac.hex
+ykdf init --import-file scalar.hex --layered --hmac-secret-file hmac.hex
+shred -u scalar.hex hmac.hex
 ```
 
-Both YubiKeys now produce identical derivations. Save `<SCALAR>` securely: it is
-the only copy of the private key and cannot be recovered from the device.
+Both `--import-file` and `--hmac-secret-file` accept `-` for stdin and a
+`/dev/fd/N` path for a file descriptor (e.g. `--import-file <(printf %s "$SCALAR")`).
+The inline `--import` / `--hmac-secret` flags still work but warn, because the
+value is visible in the process table. Both YubiKeys now produce identical
+derivations. Save `<SCALAR>` securely: it is the only copy of the private key and
+cannot be recovered from the device.
 
 Equivalent manual steps with `ykman` / `openssl`:
 

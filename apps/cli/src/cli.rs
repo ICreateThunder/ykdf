@@ -32,18 +32,42 @@ pub struct InitArgs {
     pub exportable: bool,
 
     /// Import a host-held P-256 private key (64 hex chars) into slot 9d, e.g.
-    /// to provision a backup device with the same key
+    /// to provision a backup device with the same key. Exposed in the process
+    /// table; prefer --import-file
     #[arg(long, value_name = "HEX")]
     pub import: Option<String>,
 
-    /// Use an exact 20-byte HMAC secret (40 hex chars) instead of a random one
+    /// Read the --import scalar (64 hex chars) from a file instead of the
+    /// command line, keeping it out of the process table. Use `-` for stdin
+    #[arg(long, value_name = "PATH", conflicts_with_all = ["import", "exportable"])]
+    pub import_file: Option<std::path::PathBuf>,
+
+    /// Use an exact 20-byte HMAC secret (40 hex chars) instead of a random one.
+    /// Exposed in the process table; prefer --hmac-secret-file
     #[arg(long, value_name = "HEX", requires = "layered")]
     pub hmac_secret: Option<String>,
 
+    /// Read the --hmac-secret value (40 hex chars) from a file instead of the
+    /// command line, keeping it out of the process table. Use `-` for stdin
+    #[arg(
+        long,
+        value_name = "PATH",
+        requires = "layered",
+        conflicts_with = "hmac_secret"
+    )]
+    pub hmac_secret_file: Option<std::path::PathBuf>,
+
     /// PIV management key: 48 hex chars, or `protected`/`derived` to read a
-    /// key stored on the device; defaults to the factory key
+    /// key stored on the device; defaults to the factory key. An explicit hex
+    /// key is exposed in the process table; prefer --mgmt-key-file
     #[arg(long, value_name = "HEX|protected|derived")]
     pub mgmt_key: Option<String>,
+
+    /// Read an explicit PIV management key (48 hex chars) from a file instead
+    /// of the command line, keeping it out of the process table. Use `-` for
+    /// stdin. For the `protected`/`derived` keywords use --mgmt-key
+    #[arg(long, value_name = "PATH", conflicts_with = "mgmt_key")]
+    pub mgmt_key_file: Option<std::path::PathBuf>,
 
     /// Overwrite an already-provisioned slot 9d / slot 2 without prompting
     #[arg(long)]
