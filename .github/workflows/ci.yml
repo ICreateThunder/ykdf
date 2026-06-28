@@ -99,6 +99,24 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe # v2.0.20
 
+  osv-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      # Presence-based dependency vulnerability scan across the Cargo workspace
+      # and the Go reference module (Cargo.lock + references/go/go.sum). This is
+      # the same OSV check the weekly OpenSSF Scorecard runs, but at PR time, so
+      # an advisory in a dependency fails the PR instead of surfacing later.
+      # IgnoredVulns in osv-scanner.toml (unreachable transitive advisories) are
+      # honored.
+      - uses: google/osv-scanner-action/osv-scanner-action@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
+        with:
+          scan-args: |-
+            --config=osv-scanner.toml
+            --recursive
+            ./
+
   miri:
     runs-on: ubuntu-latest
     timeout-minutes: 20
