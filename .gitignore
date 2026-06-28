@@ -55,6 +55,13 @@ site/
 /.local/
 /scratch/
 
+# CycloneDX SBOMs (generated locally by cargo-cyclonedx; release SBOMs and their
+# checksum/signature sidecars are produced in CI and attached to the release,
+# never committed)
+sbom.json
+*.cdx.json
+*.cdx.json.*
+
 # Android
 *.apk
 *.aab
