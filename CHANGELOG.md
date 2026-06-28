@@ -9,6 +9,11 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 
 ### Added
 
+- Releases now ship a CycloneDX software bill of materials for the binary's full
+  dependency graph (`ykdf-<tag>-x86_64-linux.cdx.json`), generated from
+  `Cargo.lock` by cargo-cyclonedx, with SHA-256/512 checksums and its own keyless
+  Sigstore signature bundle (verified like the archive). See
+  `docs/verifying-releases.md`.
 - `ykdf init` can now read its secret inputs from a file or stdin instead of the
   command line, keeping them out of the process table (where another local user
   could read them with `ps`): `--import-file`, `--hmac-secret-file`, and

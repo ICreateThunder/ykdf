@@ -53,18 +53,32 @@ jobs:
           sha256sum "${archive}" > "${archive}.sha256"
           sha512sum "${archive}" > "${archive}.sha512"
           echo "ARCHIVE=${archive}" >> "$GITHUB_ENV"
+      - name: Generate SBOM (CycloneDX)
+        # A CycloneDX software bill of materials for the shipped binary's full
+        # dependency graph, generated from Cargo.lock. cargo-cyclonedx writes one
+        # SBOM per workspace member; the application SBOM is the binary crate's.
+        run: |
+          cargo install cargo-cyclonedx --locked --version 0.5.7
+          cargo cyclonedx --format json --override-filename sbom
+          sbom="${ARCHIVE%.tar.gz}.cdx.json"
+          cp apps/cli/sbom.json "${sbom}"
+          sha256sum "${sbom}" > "${sbom}.sha256"
+          sha512sum "${sbom}" > "${sbom}.sha512"
+          echo "SBOM=${sbom}" >> "$GITHUB_ENV"
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-      - name: Sign artifact (keyless)
+      - name: Sign artifacts (keyless)
         # Keyless signing via the workflow's GitHub OIDC identity. Produces a
         # Sigstore bundle (signature + certificate + Rekor entry) logged in the
-        # public transparency log. The `.sigstore.json` extension is the
-        # canonical Sigstore bundle name and the one OpenSSF Scorecard's
-        # signed-releases check recognises. Verify with `cosign verify-blob
-        # --bundle` (see README).
+        # public transparency log for both the archive and the SBOM. The
+        # `.sigstore.json` extension is the canonical Sigstore bundle name and the
+        # one OpenSSF Scorecard's signed-releases check recognises. Verify with
+        # `cosign verify-blob --bundle` (see README).
         run: |
-          cosign sign-blob --yes \
-            --bundle "${ARCHIVE}.sigstore.json" \
-            "${ARCHIVE}"
+          for blob in "${ARCHIVE}" "${SBOM}"; do
+            cosign sign-blob --yes \
+              --bundle "${blob}.sigstore.json" \
+              "${blob}"
+          done
       - name: Generate subject hashes for provenance
         id: hash
         # Base64-encoded `sha256sum` line consumed by the SLSA generator as the
@@ -78,6 +92,10 @@ jobs:
             ykdf-*.tar.gz.sha256
             ykdf-*.tar.gz.sha512
             ykdf-*.tar.gz.sigstore.json
+            ykdf-*.cdx.json
+            ykdf-*.cdx.json.sha256
+            ykdf-*.cdx.json.sha512
+            ykdf-*.cdx.json.sigstore.json
           retention-days: 1
 
   provenance:

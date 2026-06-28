@@ -6,6 +6,11 @@ signature bundle (`.sigstore.json`), and SLSA build provenance (`.intoto.jsonl`)
 Both the signature and the provenance are produced by the release workflow's
 GitHub OIDC identity and logged in the public Rekor transparency log.
 
+A [CycloneDX](https://cyclonedx.org/) software bill of materials for the binary's
+full dependency graph also ships, as `ykdf-vX.Y.Z-x86_64-linux.cdx.json`, with its
+own checksums and Sigstore bundle (verify it exactly like the archive below,
+substituting the `.cdx.json` name).
+
 ```bash
 # Checksums
 sha256sum -c ykdf-vX.Y.Z-x86_64-linux.tar.gz.sha256
