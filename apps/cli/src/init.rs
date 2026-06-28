@@ -226,9 +226,9 @@ fn import_scalar(hex: &str) -> Result<Zeroizing<[u8; 32]>, CliError> {
 }
 
 /// Read a secret hex string from a file path, or from stdin when the path is
-/// `-`. Trailing whitespace (e.g. a newline) is trimmed. Keeping the value off
-/// the command line keeps it out of the process table; a path of `/dev/fd/N`
-/// reads a file descriptor.
+/// `-`. Surrounding whitespace (e.g. a trailing newline) is trimmed. Keeping the
+/// value off the command line keeps it out of the process table; a path of
+/// `/dev/fd/N` reads a file descriptor.
 fn read_secret_hex(path: &Path) -> Result<Zeroizing<String>, CliError> {
     let read_err = |source| CliError::SecretFileRead {
         path: path.to_path_buf(),
