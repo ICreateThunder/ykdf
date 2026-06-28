@@ -98,7 +98,10 @@ are `796b64662d7631` (`ykman` takes the challenge in hex, not ASCII).
 ykman otp calculate 2 796b64662d7631
 
 # Host: HMAC-SHA1(secret, "ykdf-v1") — the response the YubiKey must return.
-printf 'ykdf-v1' | openssl dgst -sha1 -mac HMAC -macopt "hexkey:$(cat hmac.hex)"
+# Read the key from the file inside the process so it never lands in the
+# argument list (openssl's `-macopt hexkey:<v>` would expose it via
+# /proc/<pid>/cmdline — the same leak the --*-file flags removed).
+python3 -c 'import hmac,hashlib; k=bytes.fromhex(open("hmac.hex").read().strip()); print(hmac.new(k, b"ykdf-v1", hashlib.sha1).hexdigest())'
 ```
 
 The YubiKey computes plain `HMAC-SHA1(secret, challenge)`, so a match between the
