@@ -47,13 +47,25 @@ Breaking changes: append `!` and include `BREAKING CHANGE:` in the body.
 
 ## Development Setup
 
-- Rust 1.87+ (edition 2024)
+- Rust 1.85+ (edition 2024) — this is the MSRV; see below
 - Tools: `gitleaks`, `typos`, `cargo-audit`, `cargo-deny`
 
 ```bash
 cargo build --workspace
 cargo test --workspace
 ```
+
+## Minimum Supported Rust Version (MSRV)
+
+The MSRV is **1.85** (the floor for edition 2024 / resolver 3), declared as
+`rust-version` in the workspace manifest and enforced by the `msrv` CI job, which
+runs `cargo check --workspace --all-features` on that exact toolchain. It applies
+to the shipped crates (the libraries and the CLI), not to dev-dependencies or the
+manual `fuzz` / `timing` tools.
+
+Raising the MSRV is a deliberate, called-out change: bump `rust-version`, note it
+in the changelog, and prefer to do it alongside a minor release rather than in an
+unrelated PR.
 
 ## Coding Standards
 
@@ -63,7 +75,7 @@ Code style is defined and enforced by tooling, not prose:
 - **Linting:** `cargo clippy --workspace --all-targets -- -D warnings` at the
   pedantic level. Warnings are errors in CI.
 - **Memory safety:** `unsafe` is forbidden workspace-wide (`unsafe_code = "forbid"`).
-- **Edition:** Rust 2024, minimum toolchain as in "Development Setup" above.
+- **Edition:** Rust 2024; the MSRV is 1.85 (see the MSRV section), checked in CI.
 - **Spelling:** `typos` runs in CI.
 
 A change that does not pass `cargo fmt --check` and pedantic clippy will not merge.

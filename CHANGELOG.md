@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 
 ### Added
 
+- Declared a Minimum Supported Rust Version of 1.85 (`rust-version` in the
+  workspace manifest) with a documented bump policy (CONTRIBUTING.md) and an
+  `msrv` CI job that builds the workspace on that exact toolchain, so an
+  accidental use of a newer-than-MSRV feature fails the PR.
 - Releases now ship a CycloneDX software bill of materials for the binary's full
   dependency graph (`ykdf-<tag>-x86_64-linux.cdx.json`), generated from
   `Cargo.lock` by cargo-cyclonedx, with SHA-256/512 checksums and its own keyless

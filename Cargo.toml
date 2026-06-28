@@ -13,6 +13,10 @@ exclude = ["fuzz", "timing"]
 [workspace.package]
 version = "0.2.0"
 edition = "2024"
+# Minimum Supported Rust Version. Bumping it is a deliberate change (see
+# CONTRIBUTING.md) and is enforced by the `msrv` CI job. 1.85 is the floor for
+# edition 2024 / resolver 3; the MSRV-aware resolver also uses it.
+rust-version = "1.85"
 license = "GPL-3.0-only"
 repository = "https://github.com/ICreateThunder/ykdf"
 publish = false
