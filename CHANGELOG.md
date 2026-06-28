@@ -70,6 +70,11 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
   key), so the common cases no longer need `--mgmt-key`. Warnings print in red on
   colour-capable terminals (honouring `NO_COLOR` and `CLICOLOR_FORCE`), and
   overwriting OTP slot 2 now requires a typed `YES` rather than `y`.
+- `ykdf derive` and `ykdf pubkey` now print a touch cue after the PIN prompt.
+  In layered mode it says to touch on each blink (the OTP/HMAC factor, only if
+  slot 2 was programmed with a touch requirement, then the PIV signature), so a
+  blink is not missed. The hardware-acceptance helper labels its rows the same
+  way.
 - `ykdf-yubikey`: the open path now distinguishes a smartcard held by another
   application (commonly `gpg-agent`'s `scdaemon`) from a genuinely absent device.
   `YubiKey::open()` silently skips a reader it cannot connect to, which made

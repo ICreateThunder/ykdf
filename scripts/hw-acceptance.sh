@@ -40,8 +40,12 @@ capture() {
     local mode="$1" profile="$2" pipeline="$3" purpose="$4" index="$5"
     local args=(pubkey --profile "$profile" --pipeline "$pipeline"
       --purpose "$purpose" --index "$index")
-    [ "$mode" = "layered" ] && args+=(--layered)
-    echo "[$i/$total] $mode $profile/$pipeline (PIN + touch)..." >&2
+    local touches="PIN + 1 touch (PIV)"
+    if [ "$mode" = "layered" ]; then
+      args+=(--layered)
+      touches="PIN + touch on each blink (OTP then PIV)"
+    fi
+    echo "[$i/$total] $mode $profile/$pipeline ($touches)..." >&2
     # Guard the call inside `if` so one failed row (a touch timeout, a missing
     # slot-2 secret) records a sentinel and the run continues, instead of
     # aborting under `set -e` and losing the rows that did capture.
