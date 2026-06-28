@@ -61,12 +61,18 @@ proptest! {
     /// longer length `b`. This defeats the HKDF/XOF prefix property and is the
     /// core security guarantee of embedding the length in `kdf_info`. Checked
     /// across all three pipelines via the Raw profile (which accepts any).
+    ///
+    /// `a` starts at 16 bytes: a non-length-bound implementation fails this for
+    /// every `a` (its streams share a prefix), but two *correctly* independent
+    /// streams can coincide in their first few bytes by chance (~256^-a). The
+    /// 16-byte floor makes that 2^-128 - impossible - so the test stays
+    /// deterministic instead of flaking ~1/256 of the time at `a == 1`.
     #[test]
     fn length_binding_defeats_prefix(
         ikm_bytes in good_ikm(),
         purpose in valid_purpose(),
         index in any::<u32>(),
-        a in 1usize..200,
+        a in 16usize..200,
         delta in 1usize..200,
     ) {
         let b = a + delta;
