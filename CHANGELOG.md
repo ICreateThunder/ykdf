@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 
 ### Added
 
+- Hardware acceptance runbook (`docs/hardware-acceptance.md`) and a helper
+  (`scripts/hw-acceptance.sh`) for the two on-device checks CI cannot cover: the
+  two-YubiKey shared-backup test (byte-identical derivation) and the slot-2
+  write path. The helper compares only public keys, so no secret touches disk.
 - Declared a Minimum Supported Rust Version of 1.85 (`rust-version` in the
   workspace manifest) with a documented bump policy (CONTRIBUTING.md) and an
   `msrv` CI job that builds the workspace on that exact toolchain, so an
