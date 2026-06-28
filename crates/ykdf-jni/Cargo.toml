@@ -3,6 +3,7 @@ name = "ykdf-jni"
 description = "JNI bindings exposing ykdf-core key derivation to Android/Kotlin"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
