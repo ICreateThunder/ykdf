@@ -1,4 +1,5 @@
-use std::io::Write;
+use std::io::{Read, Write};
+use std::path::Path;
 
 use zeroize::{Zeroize, Zeroizing};
 
@@ -19,6 +20,19 @@ enum PivMode {
 /// Provision a `YubiKey` for YKDF: generate (or import) the slot 9d key and,
 /// optionally, program HMAC-SHA1 on OTP slot 2.
 pub fn run_init(args: InitArgs) -> Result<(), CliError> {
+    // At most one secret may come from stdin: it can only be read once.
+    let stdin_sources = [
+        &args.import_file,
+        &args.hmac_secret_file,
+        &args.mgmt_key_file,
+    ]
+    .into_iter()
+    .filter(|p| p.as_deref() == Some(Path::new("-")))
+    .count();
+    if stdin_sources > 1 {
+        return Err(CliError::MultipleStdinSecrets);
+    }
+
     // Resolve all inputs up front so bad arguments fail before touching hardware.
     let mgm = resolve_mgm_source(&args)?;
     let hmac_secret = resolve_hmac_secret(&args)?;
@@ -128,22 +142,31 @@ pub fn run_init(args: InitArgs) -> Result<(), CliError> {
     Ok(())
 }
 
-/// Resolve where the PIV management key comes from. `--mgmt-key` accepts the
-/// keywords `protected` or `derived` (read the key from the device), a 48-hex
-/// explicit key, or is absent for the factory default.
+/// Resolve where the PIV management key comes from. `--mgmt-key-file` reads an
+/// explicit hex key from a path; `--mgmt-key` accepts the keywords `protected`
+/// or `derived` (read the key from the device) or a 48-hex explicit key, or is
+/// absent for the factory default.
 fn resolve_mgm_source(args: &InitArgs) -> Result<provision::MgmKeySource, CliError> {
     use provision::MgmKeySource;
+    if let Some(path) = &args.mgmt_key_file {
+        let hex = read_secret_hex(path)?;
+        return explicit_mgm_key(&hex).map(MgmKeySource::Explicit);
+    }
     match args.mgmt_key.as_deref() {
         None => Ok(MgmKeySource::Default),
         Some("protected") => Ok(MgmKeySource::Protected),
         Some("derived") => Ok(MgmKeySource::Derived),
         Some(hex) => {
-            let bytes = decode_hex(hex, 24).ok_or(CliError::InvalidMgmtKey)?;
-            let key = ykdf_yubikey::MgmKey::from_bytes(&bytes[..])
-                .map_err(|_| CliError::InvalidMgmtKey)?;
-            Ok(MgmKeySource::Explicit(key))
+            warn_process_table("--mgmt-key <hex>", "--mgmt-key-file");
+            explicit_mgm_key(hex).map(MgmKeySource::Explicit)
         }
     }
+}
+
+/// Build an explicit management key from a 48-hex string.
+fn explicit_mgm_key(hex: &str) -> Result<ykdf_yubikey::MgmKey, CliError> {
+    let bytes = decode_hex(hex, 24).ok_or(CliError::InvalidMgmtKey)?;
+    ykdf_yubikey::MgmKey::from_bytes(&bytes[..]).map_err(|_| CliError::InvalidMgmtKey)
 }
 
 /// Resolve the HMAC slot 2 secret for `--layered`. The bool records whether we
@@ -155,33 +178,84 @@ fn resolve_hmac_secret(
     if !args.layered {
         return Ok(None);
     }
-    let secret = match &args.hmac_secret {
-        Some(hex) => {
-            let bytes = decode_hex(hex, HMAC_SECRET_LEN).ok_or(CliError::InvalidHmacSecret)?;
-            let mut secret = Zeroizing::new([0u8; HMAC_SECRET_LEN]);
-            secret.copy_from_slice(&bytes);
-            (secret, false)
-        }
-        None => (
+    let secret = if let Some(path) = &args.hmac_secret_file {
+        let hex = read_secret_hex(path)?;
+        (fixed_hmac_secret(&hex)?, false)
+    } else if let Some(hex) = &args.hmac_secret {
+        warn_process_table("--hmac-secret", "--hmac-secret-file");
+        (fixed_hmac_secret(hex)?, false)
+    } else {
+        (
             provision::random_hmac_secret().map_err(CliError::YubiKey)?,
             true,
-        ),
+        )
     };
     Ok(Some(secret))
 }
 
+/// Parse a 40-hex HMAC secret into the fixed-size buffer.
+fn fixed_hmac_secret(hex: &str) -> Result<Zeroizing<[u8; HMAC_SECRET_LEN]>, CliError> {
+    let bytes = decode_hex(hex, HMAC_SECRET_LEN).ok_or(CliError::InvalidHmacSecret)?;
+    let mut secret = Zeroizing::new([0u8; HMAC_SECRET_LEN]);
+    secret.copy_from_slice(&bytes);
+    Ok(secret)
+}
+
 /// Resolve how the slot 9d key is created from the CLI flags.
 fn resolve_piv_mode(args: &InitArgs) -> Result<PivMode, CliError> {
+    if let Some(path) = &args.import_file {
+        let hex = read_secret_hex(path)?;
+        return Ok(PivMode::Import(import_scalar(&hex)?));
+    }
     match &args.import {
         Some(hex) => {
-            let bytes = decode_hex(hex, 32).ok_or(CliError::InvalidImportKey)?;
-            let mut scalar = Zeroizing::new([0u8; 32]);
-            scalar.copy_from_slice(&bytes);
-            Ok(PivMode::Import(scalar))
+            warn_process_table("--import", "--import-file");
+            Ok(PivMode::Import(import_scalar(hex)?))
         }
         None if args.exportable => Ok(PivMode::Exportable),
         None => Ok(PivMode::OnDevice),
     }
+}
+
+/// Parse a 64-hex P-256 scalar into the fixed-size buffer.
+fn import_scalar(hex: &str) -> Result<Zeroizing<[u8; 32]>, CliError> {
+    let bytes = decode_hex(hex, 32).ok_or(CliError::InvalidImportKey)?;
+    let mut scalar = Zeroizing::new([0u8; 32]);
+    scalar.copy_from_slice(&bytes);
+    Ok(scalar)
+}
+
+/// Read a secret hex string from a file path, or from stdin when the path is
+/// `-`. Trailing whitespace (e.g. a newline) is trimmed. Keeping the value off
+/// the command line keeps it out of the process table; a path of `/dev/fd/N`
+/// reads a file descriptor.
+fn read_secret_hex(path: &Path) -> Result<Zeroizing<String>, CliError> {
+    let read_err = |source| CliError::SecretFileRead {
+        path: path.to_path_buf(),
+        source,
+    };
+    let bytes = if path == Path::new("-") {
+        let mut buf = Zeroizing::new(Vec::new());
+        std::io::stdin().read_to_end(&mut buf).map_err(read_err)?;
+        buf
+    } else {
+        Zeroizing::new(std::fs::read(path).map_err(read_err)?)
+    };
+    let text = std::str::from_utf8(&bytes).map_err(|_| {
+        read_err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "secret file is not valid UTF-8",
+        ))
+    })?;
+    Ok(Zeroizing::new(text.trim().to_string()))
+}
+
+/// Warn that a secret passed inline is visible in the process table.
+fn warn_process_table(flag: &str, file_flag: &str) {
+    eprintln!(
+        "warning: {flag} exposes the secret in the process table (visible to `ps`); \
+         prefer {file_flag} <PATH> (or `-` for stdin)."
+    );
 }
 
 /// Decode a hex string, returning the bytes only if they match `expected_len`.
@@ -208,7 +282,8 @@ fn confirm_slot2_overwrite() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::decode_hex;
+    use super::{decode_hex, read_secret_hex};
+    use std::path::PathBuf;
 
     #[test]
     fn decodes_exact_length() {
@@ -250,5 +325,31 @@ mod tests {
         // A 31- or 33-byte value is rejected.
         assert!(decode_hex(&"11".repeat(31), 32).is_none());
         assert!(decode_hex(&"11".repeat(33), 32).is_none());
+    }
+
+    /// A unique scratch path under the temp dir for a single test.
+    fn scratch_path(tag: &str) -> PathBuf {
+        let mut p = std::env::temp_dir();
+        p.push(format!("ykdf-init-test-{}-{tag}", std::process::id()));
+        p
+    }
+
+    #[test]
+    fn reads_and_trims_secret_file() {
+        let path = scratch_path("hmac");
+        // A trailing newline (as a `printf`/editor would leave) must be trimmed
+        // so the value still decodes to the exact byte length.
+        std::fs::write(&path, format!("{}\n", "ab".repeat(20))).expect("write temp");
+        let hex = read_secret_hex(&path).expect("read secret");
+        assert_eq!(&*hex, &"ab".repeat(20));
+        assert_eq!(decode_hex(&hex, 20).expect("valid").len(), 20);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn missing_secret_file_errors() {
+        let path = scratch_path("missing");
+        let _ = std::fs::remove_file(&path);
+        assert!(read_secret_hex(&path).is_err());
     }
 }

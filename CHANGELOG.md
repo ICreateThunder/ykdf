@@ -9,6 +9,12 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 
 ### Added
 
+- `ykdf init` can now read its secret inputs from a file or stdin instead of the
+  command line, keeping them out of the process table (where another local user
+  could read them with `ps`): `--import-file`, `--hmac-secret-file`, and
+  `--mgmt-key-file`. Each accepts `-` for stdin and a `/dev/fd/N` path for a file
+  descriptor. The inline `--import` / `--hmac-secret` / `--mgmt-key <hex>` forms
+  still work but now print a warning. At most one secret may be read from stdin.
 - Independent C reference implementation under `references/c/`, written from
   `docs/SPEC.md` on a third primitive stack (libsodium for Argon2id, OpenSSL
   >= 3.5 for SHAKE and native ML-KEM / ML-DSA seed key generation, hand-written
