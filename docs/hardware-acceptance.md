@@ -108,12 +108,65 @@ The YubiKey computes plain `HMAC-SHA1(secret, challenge)`, so a match between th
 two keys (and the host value) confirms `ykdf init` wrote the intended 20-byte
 secret to slot 2.
 
+## Test 3 — confirm both factors contribute (optional)
+
+Tests 1 and 2 prove two devices derive the same keys, not *why*. If the code
+silently dropped a factor (a null or a constant in place of the real PIV ECDH or
+HMAC), two devices that share both factors would still match, so the match alone
+does not prove each factor feeds the output. The IKM is `self-ECDH(slot 9d)` for
+standard mode and `self-ECDH(slot 9d) || HMAC-SHA1(slot 2, "ykdf-v1")` for
+layered (`crates/ykdf-yubikey/src/lib.rs`); the context string does not encode
+the mode, so standard and layered differ only in the IKM.
+
+**Presence (one device, no writes).** Standard and layered output must differ:
+
+```bash
+"$YKDF" pubkey --profile x25519 --purpose acc            # IKM = ECDH
+"$YKDF" pubkey --profile x25519 --purpose acc --layered  # IKM = ECDH || HMAC
+```
+
+Equal output means the HMAC factor is not mixed in. A fresh `ykdf clone` (a new
+random scalar) with slot 2 unchanged must also change the output, which confirms
+the PIV factor is mixed in.
+
+**Value sensitivity (destructive).** Re-program slot 2 with a different secret:
+the layered output changes and the standard output does not, so the HMAC value
+(not a constant) drives the result. This breaks the two-key match, so do it only
+on a device you are about to re-provision.
+
+**Definitive (recompute the IKM off-device).** `derive`/`pubkey` accept
+`--ikm-file`, so you can build the IKM from the slot 9d scalar and the slot 2
+secret and check the hardware path produces the same key:
+
+```bash
+python3 - <<'PY'
+from cryptography.hazmat.primitives.asymmetric import ec
+import hmac, hashlib
+scalar = int(open("scalar.hex").read().strip(), 16)        # slot 9d scalar
+secret = bytes.fromhex(open("hmac.hex").read().strip())    # slot 2 HMAC secret
+priv = ec.derive_private_key(scalar, ec.SECP256R1())
+shared = priv.exchange(ec.ECDH(), priv.public_key())       # self-ECDH x-coord, 32 bytes
+mac = hmac.new(secret, b"ykdf-v1", hashlib.sha1).digest()  # 20 bytes
+open("ikm.bin", "wb").write(shared + mac)                  # IKM = ECDH || HMAC
+PY
+
+"$YKDF" pubkey --profile x25519 --purpose acc --layered           # hardware
+"$YKDF" pubkey --profile x25519 --purpose acc --ikm-file ikm.bin  # recomputed
+```
+
+Byte-identical output proves the hardware folds in exactly the real ECDH and
+HMAC values, with no null or default substituted. For the standard-only check,
+write just `shared` and drop `--layered`. Reading the scalar and secret from
+files (not the command line) keeps them out of the process table.
+
 ## Cleanup
 
 ```bash
 shred -u scalar.hex hmac.hex a.txt b.txt
+shred -u ikm.bin 2>/dev/null || true   # only if you ran Test 3
 ```
 
 The captures hold only public keys, but the secret files are the single copy of
-the slot-9d scalar and the HMAC secret — destroy them (or store them as your
-deliberate backup) once the test passes.
+the slot-9d scalar and the HMAC secret; destroy them (or store them as your
+deliberate backup) once the test passes. `ikm.bin` from Test 3 is raw key
+material, so destroy it too.
