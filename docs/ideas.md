@@ -1,5 +1,11 @@
 # Ideas and experiments
 
+> **Warning — unvetted thinking ahead.** Nothing in this file is reviewed,
+> finalised, or security-audited. These are open thought experiments: some may be
+> insecure, premature, or mutually contradictory. Do not treat anything here as a
+> recommendation, a commitment, or a description of shipped behaviour. Discussion
+> is open and welcome — challenge it.
+
 A log of design ideas that are out of scope for current work but worth keeping.
 Nothing here is committed to a roadmap; these are thought experiments and
 candidate features.
@@ -43,6 +49,48 @@ Split an exportable seed into Shamir shares and reconstruct from any `t`.
 - **Implementation:** use a vetted SSS library (`vsss-rs` or SLIP-39) with
   constant-time GF(256); zeroize the reconstructed secret immediately.
 
+## Hierarchical / bulk provisioning - the "pyramid" (thought experiment)
+
+Provision many YubiKeys from a single root, in one session, with the secret kept
+in host RAM only (never displayed, clipboarded, or written). Two distinct shapes
+that are easy to conflate:
+
+- **Clones (same root):** every device gets the *same* slot-9d scalar (and, if
+  layered, the same slot-2 HMAC secret), so all devices derive *identical* keys -
+  true interchangeable backups. "Generate one scalar, push it to N keys, wipe the
+  in-RAM copy." This is the concrete near-term feature (see the planned
+  `ykdf clone`); the existing `--import-file` flow is its single-device,
+  one-at-a-time ancestor.
+- **Children (derived roots):** a master derives a *different* root per device,
+  `child_i = HKDF(master_ikm, "ykdf-root-v1", i)` (and a matching child HMAC), so
+  each device is an independent identity the master can *recreate* but which is
+  **not** a backup of its siblings. This is hardened BIP-32-style HD derivation at
+  the provisioning layer. One-way: a child (or its leaked keys) cannot climb to
+  the master or to siblings.
+
+Properties and caveats:
+
+- **Master = single point of compromise:** whoever holds the master can derive
+  every child. Keep it offline; the "wipe the master after provisioning" workflow
+  (master is a transient in-RAM scalar) removes the apex entirely once the batch
+  is cut.
+- **Master IKM transits host RAM** at provisioning time (Zeroized after) - same
+  exposure class as `--exportable`, scoped to provisioning, never at leaf-derive.
+- **Layered factor:** the master must derive both the child scalar and the child
+  HMAC secret for a child to reproduce a full layered root.
+- **Versus Shamir (above):** for *resilient backup* with no single apex, `t`-of-`n`
+  is arguably stronger; the pyramid optimises for *bulk minting / regeneration*
+  from one root, not threshold recovery. They are complementary.
+- **All additive:** rides entirely on the existing KDF and provisioning
+  primitives; does not touch the frozen v1 format.
+
+**Recommended shape: a single level (flat clones).** Depth is a cost, not a
+feature - every extra layer keeps master secret material in RAM longer and widens
+the exposure window between shares. So default to one level (generate one root,
+push it to N devices, wipe the in-RAM copy immediately). Go beyond one level only
+behind a proper threshold scheme (the Shamir `t`-of-`n` design above), never via
+naive deep HD derivation, which multiplies in-RAM secrets for no resilience gain.
+
 ## Other deferred items
 
 - AES-192 PIV management keys: the `yubikey` 0.8 backend only supports TDES
@@ -54,9 +102,6 @@ Split an exportable seed into Shamir shares and reconstruct from any `t`.
 - PIN / PUK / management-key rotation as part of or alongside `ykdf init`.
 - Seed-derived HMAC slot 2 secret (reproducible from a passphrase) if the
   display-once model proves inconvenient.
-- Keep secrets out of the process table: `ykdf init --hmac-secret`,
-  `--mgmt-key`, and `--import` take values as command-line arguments, which are
-  visible to other local users via `/proc/<pid>/cmdline` and `ps` (and land in
-  shell history). Add a file/stdin/fd input path (e.g. `--import -`,
-  `--hmac-secret-file <path>`) so explicit secrets never hit the argument list.
-  The default random-generation paths are unaffected.
+- Keep secrets out of the process table (IMPLEMENTED): shipped as
+  `--import-file`, `--hmac-secret-file`, and `--mgmt-key-file` (each accepts `-`
+  for stdin and a `/dev/fd/N` path); the inline forms still work but warn.

@@ -20,6 +20,9 @@ Start at the top-level [README](../README.md) for the overview and quick start.
   format (Go and C in tree) that must reproduce every golden vector.
 - [transport-notes.md](transport-notes.md) - hardware-verified desktop transport
   details (PC/SC, hidraw, scdaemon passthrough).
+- [hardware-acceptance.md](hardware-acceptance.md) - bench procedure for the
+  two-device shared-backup and slot-2 write-path tests (uses
+  `scripts/hw-acceptance.sh`).
 - [assurance-case.md](assurance-case.md) - the security assurance argument and
   its evidence.
 - [android-spike.md](android-spike.md) - the Android NFC transport feasibility
