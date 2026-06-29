@@ -55,6 +55,10 @@ impl Default for PivPolicy {
 
 /// How to obtain the PIV management key for provisioning.
 pub enum MgmKeySource {
+    /// Try, in order, the factory default, the PIN-protected stored key, then
+    /// the PIN-derived key, using the first that authenticates. Requires PIN
+    /// verification so the protected and derived keys can be read.
+    Auto,
     /// The factory default management key.
     Default,
     /// An explicitly supplied management key.
@@ -71,6 +75,7 @@ pub enum MgmKeySource {
 /// PIN-gated data on the device.
 fn authenticate_mgm(yubikey: &mut YubiKey, source: MgmKeySource, pin: &[u8]) -> crate::Result<()> {
     let key = match source {
+        MgmKeySource::Auto => return authenticate_mgm_auto(yubikey, pin),
         MgmKeySource::Default => MgmKey::default(),
         MgmKeySource::Explicit(key) => key,
         MgmKeySource::Protected => {
@@ -81,6 +86,29 @@ fn authenticate_mgm(yubikey: &mut YubiKey, source: MgmKeySource, pin: &[u8]) -> 
         }
     };
     yubikey.authenticate(key).map_err(|_| Error::MgmtAuthFailed)
+}
+
+/// Authenticate by trying each common management-key source in turn.
+///
+/// Order: factory default, then the PIN-protected stored key, then the
+/// PIN-derived key. A failed mutual authentication leaves the card usable for
+/// the next attempt (each call runs its own challenge-response), so this probes
+/// without a flag. Returns `Error::MgmtAuthFailed` if none authenticate.
+fn authenticate_mgm_auto(yubikey: &mut YubiKey, pin: &[u8]) -> crate::Result<()> {
+    if yubikey.authenticate(MgmKey::default()).is_ok() {
+        return Ok(());
+    }
+    if let Ok(key) = MgmKey::get_protected(yubikey) {
+        if yubikey.authenticate(key).is_ok() {
+            return Ok(());
+        }
+    }
+    if let Ok(key) = MgmKey::get_derived(yubikey, pin) {
+        if yubikey.authenticate(key).is_ok() {
+            return Ok(());
+        }
+    }
+    Err(Error::MgmtAuthFailed)
 }
 
 /// Open the first connected `YubiKey` over PC/SC for provisioning.

@@ -119,6 +119,30 @@ value is visible in the process table. Both YubiKeys now produce identical
 derivations. Save `<SCALAR>` securely: it is the only copy of the private key and
 cannot be recovered from the device.
 
+### Clone several keys in one session (no secret on disk)
+
+`ykdf clone` provisions any number of YubiKeys from a single root in one
+swap-session, keeping the secret in host RAM only: it is never displayed,
+clipboarded, or written, and is wiped when the command exits. This is the
+hygienic path when you want interchangeable backups but no saved copy of the
+root (and need only one USB port):
+
+```bash
+# Generate a fresh root and push it to every device, one at a time. With
+# --layered, the same OTP slot 2 HMAC secret is programmed on each as well.
+ykdf clone --layered
+# Insert device 1 -> PIN + touch -> "Device #1 cloned. slot 9d public key: ..."
+# Swap to device 2 -> PIN + touch -> "Device #2 cloned. ..."
+# Press 'q' when done. The command verifies every device shares one public key.
+```
+
+Because nothing is saved, you cannot add another clone later without re-running
+the whole batch. To keep a recoverable copy of the root, either clone from an
+existing scalar (`ykdf clone --import-file scalar.hex`) or print it once at the
+end (`ykdf clone --show`, which forgoes the RAM-only property; for a saved copy
+`ykdf init --exportable` is the cleaner choice). Secret files here must be real
+paths, not `-`: clone reads its per-device prompts from stdin.
+
 Equivalent manual steps with `ykman` / `openssl`:
 
 ```bash

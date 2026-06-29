@@ -9,10 +9,22 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 
 ### Added
 
+- `ykdf clone`: provision several YubiKeys from one root in a single
+  swap-session. The root secret (the slot 9d scalar, and with `--layered` the
+  slot 2 HMAC secret) is generated or read once, held in host RAM, pushed to
+  each device in turn, and wiped on exit (never displayed, clipboarded, or
+  written unless `--show`). It needs only one USB port: insert a device,
+  provision, swap, repeat. `--import-file` clones an existing scalar; the
+  command verifies every device ends up sharing one slot 9d public key. Each
+  device is prompted for its own PIN, the management key is auto-detected, and
+  overwriting an occupied slot needs a typed `YES`.
 - Hardware acceptance runbook (`docs/hardware-acceptance.md`) and a helper
   (`scripts/hw-acceptance.sh`) for the two on-device checks CI cannot cover: the
   two-YubiKey shared-backup test (byte-identical derivation) and the slot-2
   write path. The helper compares only public keys, so no secret touches disk.
+  It also documents optional factor-contribution checks (standard vs layered,
+  and an off-device IKM recomputation via `--ikm-file`) that prove each of the
+  PIV ECDH and HMAC factors actually feeds the output.
 - Declared a Minimum Supported Rust Version of 1.85 (`rust-version` in the
   workspace manifest) with a documented bump policy (CONTRIBUTING.md) and an
   `msrv` CI job that builds the workspace on that exact toolchain, so an
@@ -56,6 +68,16 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 
 ### Changed
 
+- `ykdf init` and `ykdf clone` now auto-detect the PIV management key by default
+  (try the factory key, then the PIN-protected stored key, then the PIN-derived
+  key), so the common cases no longer need `--mgmt-key`. Warnings print in red on
+  colour-capable terminals (honouring `NO_COLOR` and `CLICOLOR_FORCE`), and
+  overwriting OTP slot 2 now requires a typed `YES` rather than `y`.
+- `ykdf derive` and `ykdf pubkey` now print a touch cue after the PIN prompt.
+  In layered mode it says to touch on each blink (the OTP/HMAC factor, only if
+  slot 2 was programmed with a touch requirement, then the PIV signature), so a
+  blink is not missed. The hardware-acceptance helper labels its rows the same
+  way.
 - `ykdf-yubikey`: the open path now distinguishes a smartcard held by another
   application (commonly `gpg-agent`'s `scdaemon`) from a genuinely absent device.
   `YubiKey::open()` silently skips a reader it cannot connect to, which made

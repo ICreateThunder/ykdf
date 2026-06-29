@@ -1,4 +1,4 @@
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::Path;
 
 use zeroize::{Zeroize, Zeroizing};
@@ -52,10 +52,10 @@ pub fn run_init(args: InitArgs) -> Result<(), CliError> {
     match &piv_mode {
         PivMode::OnDevice => {
             eprintln!("Provisioning PIV slot 9d (on-device P-256, non-extractable).");
-            eprintln!(
+            crate::term::warn(
                 "WARNING: an on-device key cannot be backed up. If this YubiKey is lost, \
                  keys derived from the PIV factor are unrecoverable. Back up the derived \
-                 outputs you rely on."
+                 outputs you rely on.",
             );
         }
         PivMode::Exportable => {
@@ -153,7 +153,7 @@ fn resolve_mgm_source(args: &InitArgs) -> Result<provision::MgmKeySource, CliErr
         return explicit_mgm_key(&hex).map(MgmKeySource::Explicit);
     }
     match args.mgmt_key.as_deref() {
-        None => Ok(MgmKeySource::Default),
+        None => Ok(MgmKeySource::Auto),
         Some("protected") => Ok(MgmKeySource::Protected),
         Some("derived") => Ok(MgmKeySource::Derived),
         Some(hex) => {
@@ -164,7 +164,7 @@ fn resolve_mgm_source(args: &InitArgs) -> Result<provision::MgmKeySource, CliErr
 }
 
 /// Build an explicit management key from a 48-hex string.
-fn explicit_mgm_key(hex: &str) -> Result<ykdf_yubikey::MgmKey, CliError> {
+pub(crate) fn explicit_mgm_key(hex: &str) -> Result<ykdf_yubikey::MgmKey, CliError> {
     let bytes = decode_hex(hex, 24).ok_or(CliError::InvalidMgmtKey)?;
     ykdf_yubikey::MgmKey::from_bytes(&bytes[..]).map_err(|_| CliError::InvalidMgmtKey)
 }
@@ -194,7 +194,7 @@ fn resolve_hmac_secret(
 }
 
 /// Parse a 40-hex HMAC secret into the fixed-size buffer.
-fn fixed_hmac_secret(hex: &str) -> Result<Zeroizing<[u8; HMAC_SECRET_LEN]>, CliError> {
+pub(crate) fn fixed_hmac_secret(hex: &str) -> Result<Zeroizing<[u8; HMAC_SECRET_LEN]>, CliError> {
     let bytes = decode_hex(hex, HMAC_SECRET_LEN).ok_or(CliError::InvalidHmacSecret)?;
     let mut secret = Zeroizing::new([0u8; HMAC_SECRET_LEN]);
     secret.copy_from_slice(&bytes);
@@ -218,7 +218,7 @@ fn resolve_piv_mode(args: &InitArgs) -> Result<PivMode, CliError> {
 }
 
 /// Parse a 64-hex P-256 scalar into the fixed-size buffer.
-fn import_scalar(hex: &str) -> Result<Zeroizing<[u8; 32]>, CliError> {
+pub(crate) fn import_scalar(hex: &str) -> Result<Zeroizing<[u8; 32]>, CliError> {
     let bytes = decode_hex(hex, 32).ok_or(CliError::InvalidImportKey)?;
     let mut scalar = Zeroizing::new([0u8; 32]);
     scalar.copy_from_slice(&bytes);
@@ -229,7 +229,7 @@ fn import_scalar(hex: &str) -> Result<Zeroizing<[u8; 32]>, CliError> {
 /// `-`. Surrounding whitespace (e.g. a trailing newline) is trimmed. Keeping the
 /// value off the command line keeps it out of the process table; a path of
 /// `/dev/fd/N` reads a file descriptor.
-fn read_secret_hex(path: &Path) -> Result<Zeroizing<String>, CliError> {
+pub(crate) fn read_secret_hex(path: &Path) -> Result<Zeroizing<String>, CliError> {
     let read_err = |source| CliError::SecretFileRead {
         path: path.to_path_buf(),
         source,
@@ -251,33 +251,27 @@ fn read_secret_hex(path: &Path) -> Result<Zeroizing<String>, CliError> {
 }
 
 /// Warn that a secret passed inline is visible in the process table.
-fn warn_process_table(flag: &str, file_flag: &str) {
-    eprintln!(
+pub(crate) fn warn_process_table(flag: &str, file_flag: &str) {
+    crate::term::warn(&format!(
         "warning: {flag} exposes the secret in the process table (visible to `ps`); \
          prefer {file_flag} <PATH> (or `-` for stdin)."
-    );
+    ));
 }
 
 /// Decode a hex string, returning the bytes only if they match `expected_len`.
-fn decode_hex(input: &str, expected_len: usize) -> Option<Zeroizing<Vec<u8>>> {
+pub(crate) fn decode_hex(input: &str, expected_len: usize) -> Option<Zeroizing<Vec<u8>>> {
     let bytes = Zeroizing::new(hex::decode(input).ok()?);
     (bytes.len() == expected_len).then_some(bytes)
 }
 
 /// Prompt before overwriting OTP slot 2. Slot 2 configuration cannot be read
-/// back, so we cannot auto-detect an existing secret; default to not
-/// overwriting on any read failure.
-fn confirm_slot2_overwrite() -> bool {
-    eprint!(
+/// back, so we cannot auto-detect an existing secret; this is destructive, so
+/// require a deliberate `YES`.
+pub(crate) fn confirm_slot2_overwrite() -> bool {
+    crate::term::confirm_destructive(
         "Programming OTP slot 2 overwrites any existing configuration there \
-         (OTP or challenge-response). Continue? [y/N] "
-    );
-    let _ = std::io::stderr().flush();
-    let mut input = String::new();
-    if std::io::stdin().read_line(&mut input).is_err() {
-        return false;
-    }
-    matches!(input.trim().to_ascii_lowercase().as_str(), "y" | "yes")
+         (OTP or challenge-response). Type YES to continue: ",
+    )
 }
 
 #[cfg(test)]

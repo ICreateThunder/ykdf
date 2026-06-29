@@ -43,6 +43,20 @@ impl IkmSource {
                     rpassword::prompt_password("PIV PIN: ").map_err(CliError::PassphraseRead)?,
                 );
 
+                // Cue the operator to touch on each blink. Layered mode reads
+                // the OTP/HMAC factor first, then the PIV signature: that is two
+                // blinks if slot 2 was programmed with a touch requirement, or
+                // one (PIV only) if it was not. Either way, "touch on each blink"
+                // is the correct instruction.
+                if *layered {
+                    eprintln!(
+                        "Touch the YubiKey on each blink: the OTP/HMAC factor (only if slot 2 \
+                         requires touch), then the PIV signature."
+                    );
+                } else {
+                    eprintln!("Touch the YubiKey when it blinks (PIV signature).");
+                }
+
                 ykdf_yubikey::derive_ikm_with(chosen, mode, pin.as_bytes())
                     .map_err(CliError::YubiKey)
             }

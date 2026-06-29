@@ -41,6 +41,8 @@ pub enum CliError {
     },
     /// More than one secret was requested from stdin (`-`).
     MultipleStdinSecrets,
+    /// `clone` reserves stdin for device prompts, so secret files cannot use `-`.
+    CloneStdinUnsupported { flag: &'static str },
 }
 
 impl CliError {
@@ -53,7 +55,8 @@ impl CliError {
             | Self::InvalidHmacSecret
             | Self::InvalidMgmtKey
             | Self::InvalidImportKey
-            | Self::MultipleStdinSecrets => 2,
+            | Self::MultipleStdinSecrets
+            | Self::CloneStdinUnsupported { .. } => 2,
             _ => 1,
         }
     }
@@ -104,6 +107,11 @@ impl std::fmt::Display for CliError {
             Self::MultipleStdinSecrets => {
                 write!(f, "only one secret can be read from stdin (`-`)")
             }
+            Self::CloneStdinUnsupported { flag } => write!(
+                f,
+                "clone reads the per-device prompts from stdin, so {flag} cannot \
+                 use `-` (stdin); pass a real file path"
+            ),
         }
     }
 }

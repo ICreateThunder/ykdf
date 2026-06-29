@@ -55,11 +55,12 @@ Provision many YubiKeys from a single root, in one session, with the secret kept
 in host RAM only (never displayed, clipboarded, or written). Two distinct shapes
 that are easy to conflate:
 
-- **Clones (same root):** every device gets the *same* slot-9d scalar (and, if
-  layered, the same slot-2 HMAC secret), so all devices derive *identical* keys -
-  true interchangeable backups. "Generate one scalar, push it to N keys, wipe the
-  in-RAM copy." This is the concrete near-term feature (see the planned
-  `ykdf clone`); the existing `--import-file` flow is its single-device,
+- **Clones (same root), IMPLEMENTED as `ykdf clone`:** every device gets the
+  *same* slot-9d scalar (and, if layered, the same slot-2 HMAC secret), so all
+  devices derive *identical* keys - true interchangeable backups. "Generate one
+  scalar, push it to N keys, wipe the in-RAM copy." Shipped as the swap-session
+  `ykdf clone` (one port, insert/provision/swap/repeat, secret held in RAM and
+  zeroized on exit); the single-device `init --import-file` flow is its
   one-at-a-time ancestor.
 - **Children (derived roots):** a master derives a *different* root per device,
   `child_i = HKDF(master_ikm, "ykdf-root-v1", i)` (and a matching child HMAC), so
