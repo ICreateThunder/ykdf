@@ -35,4 +35,20 @@ object Native {
         purpose: String,
         index: Int,
     ): ByteArray
+
+    /**
+     * Derive and format the public key for a derivation: the same string the
+     * CLI's `ykdf pubkey` prints (base64 for x25519/ML-KEM/ML-DSA, an OpenSSH
+     * line for ed25519, an `age1` recipient for age). Not secret.
+     *
+     * @throws IllegalArgumentException on invalid inputs or a profile with no
+     *   public key (`symmetric`, `raw`).
+     */
+    external fun derivePublic(
+        ikm: ByteArray,
+        pipeline: String,
+        profile: String,
+        purpose: String,
+        index: Int,
+    ): String
 }

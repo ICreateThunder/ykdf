@@ -55,6 +55,10 @@ class MainActivity : ComponentActivity() {
     // explicitly reveals it, and re-hide it whenever a new value is derived.
     private val showSecret = mutableStateOf(false)
 
+    // The public key for the derivation (empty for profiles without one, e.g.
+    // symmetric/raw). Not secret, so it is shown openly.
+    private val publicKey = mutableStateOf("")
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Draw under the system bars with light icons over the black theme.
@@ -64,7 +68,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme(colorScheme = YkdfColors) {
                 MeshBackground {
-                    DeriveScreen(pin, profile, purpose, layered, status, output, showSecret)
+                    DeriveScreen(
+                        pin, profile, purpose, layered, status, output, showSecret, publicKey,
+                    )
                 }
             }
         }
@@ -93,16 +99,24 @@ class MainActivity : ComponentActivity() {
         post("Reading YubiKey...")
         val pinBytes = pin.value.toByteArray(Charsets.US_ASCII)
         try {
+            val prof = profile.value.trim()
+            val purp = purpose.value.trim()
             val ikm = YubiKeyNfc.deriveIkm(isoDep, pinBytes, layered.value)
             // Empty pipeline => the profile's default, matching the CLI.
-            val secret = Native.derive(ikm, "", profile.value.trim(), purpose.value.trim(), 0)
+            val secret = Native.derive(ikm, "", prof, purp, 0)
+            // The public key (if this profile has one) comes from the same IKM.
+            val pub = try {
+                Native.derivePublic(ikm, "", prof, purp, 0)
+            } catch (e: Exception) {
+                "" // symmetric/raw have no public key
+            }
             ikm.fill(0)
             val hex = bytesToHex(secret)
             val size = secret.size
             secret.fill(0)
-            postResult("Derived $size bytes", hex)
+            postResult("Derived $size bytes", hex, pub)
         } catch (e: Exception) {
-            postResult("Error: ${e.message}", "")
+            postResult("Error: ${e.message}", "", "")
         } finally {
             pinBytes.fill(0)
             runCatching { isoDep.close() }
@@ -111,9 +125,10 @@ class MainActivity : ComponentActivity() {
 
     private fun post(message: String) = runOnUiThread { status.value = message }
 
-    private fun postResult(message: String, hex: String) = runOnUiThread {
+    private fun postResult(message: String, hex: String, pub: String) = runOnUiThread {
         status.value = message
         output.value = hex
+        publicKey.value = pub
         // A freshly derived secret starts hidden, even if the previous one was
         // revealed.
         showSecret.value = false
@@ -133,6 +148,7 @@ private fun DeriveScreen(
     status: MutableState<String>,
     output: MutableState<String>,
     showSecret: MutableState<Boolean>,
+    publicKey: MutableState<String>,
 ) {
     Column(
         modifier = Modifier
@@ -184,8 +200,8 @@ private fun DeriveScreen(
         }
 
         Text(status.value, style = MaterialTheme.typography.bodyMedium)
+        val clipboard = LocalClipboardManager.current
         if (output.value.isNotEmpty()) {
-            val clipboard = LocalClipboardManager.current
             Text("Private key (keep secret)", style = MaterialTheme.typography.titleMedium)
             Text(
                 if (showSecret.value) output.value else "•••• hidden ••••",
@@ -198,6 +214,13 @@ private fun DeriveScreen(
                 TextButton(onClick = { clipboard.setText(AnnotatedString(output.value)) }) {
                     Text("Copy")
                 }
+            }
+        }
+        if (publicKey.value.isNotEmpty()) {
+            Text("Public key", style = MaterialTheme.typography.titleMedium)
+            Text(publicKey.value, style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = { clipboard.setText(AnnotatedString(publicKey.value)) }) {
+                Text("Copy")
             }
         }
     }

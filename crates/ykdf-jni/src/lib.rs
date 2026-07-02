@@ -37,6 +37,40 @@ pub fn derive_secret(
     purpose: &str,
     index: u32,
 ) -> Result<Vec<u8>, String> {
+    let (_profile, output) = derive_output(ikm, pipeline, profile, purpose, index)?;
+    Ok(secret_bytes(&output))
+}
+
+/// Derive and format the public key for a derivation: the same string the CLI's
+/// `ykdf pubkey` prints (base64 for x25519/ML-KEM/ML-DSA, an OpenSSH line for
+/// ed25519, an `age1` recipient for age). The public key is not secret.
+///
+/// # Errors
+///
+/// Returns a message for an unknown profile/pipeline, invalid IKM, a disallowed
+/// combination, or a profile that has no public key (`symmetric`, `raw`).
+pub fn public_key(
+    ikm: &[u8],
+    pipeline: &str,
+    profile: &str,
+    purpose: &str,
+    index: u32,
+) -> Result<String, String> {
+    let (profile_enum, output) = derive_output(ikm, pipeline, profile, purpose, index)?;
+    ykdf_core::public_key_string(&output, profile_enum)
+        .ok_or_else(|| format!("the {profile} profile has no public key"))
+}
+
+/// Resolve the context and run the derivation, returning the resolved profile
+/// with its output so callers can take either the secret bytes or the public
+/// key. Shared by [`derive_secret`] and [`public_key`].
+fn derive_output(
+    ikm: &[u8],
+    pipeline: &str,
+    profile: &str,
+    purpose: &str,
+    index: u32,
+) -> Result<(Profile, ProfileOutput), String> {
     let profile =
         Profile::from_str_label(profile).ok_or_else(|| format!("unknown profile: {profile}"))?;
     let context = if pipeline.is_empty() {
@@ -50,7 +84,7 @@ pub fn derive_secret(
     let ikm = Ikm::new(ikm.to_vec()).map_err(|e| format!("{e}"))?;
     let master_key = extract(&ikm, context.pipeline()).map_err(|e| format!("{e}"))?;
     let output = derive(&master_key, &context).map_err(|e| format!("{e}"))?;
-    Ok(secret_bytes(&output))
+    Ok((profile, output))
 }
 
 /// Extract the primary secret bytes from a profile output, mirroring the CLI's
@@ -74,7 +108,7 @@ fn secret_bytes(output: &ProfileOutput) -> Vec<u8> {
 
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JString};
-use jni::sys::{jbyteArray, jint};
+use jni::sys::{jbyteArray, jint, jstring};
 use zeroize::Zeroize;
 
 /// JNI entry point for `app.ykdf.Native.derive(...)`.
@@ -137,9 +171,56 @@ fn jstring(env: &mut JNIEnv<'_>, s: &JString<'_>) -> Result<String, String> {
         .map_err(|e| e.to_string())
 }
 
+/// JNI entry point for `app.ykdf.Native.derivePublic(...)`.
+///
+/// On success returns a Java `String` with the formatted public key. On any
+/// error (including a profile with no public key) it throws a Java
+/// `IllegalArgumentException` and returns null. The public key is not secret,
+/// so it is not zeroized.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_app_ykdf_Native_derivePublic<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ikm: JByteArray<'local>,
+    pipeline: JString<'local>,
+    profile: JString<'local>,
+    purpose: JString<'local>,
+    index: jint,
+) -> jstring {
+    match run_public(&mut env, &ikm, &pipeline, &profile, &purpose, index) {
+        Ok(s) => env
+            .new_string(s)
+            .map_or(std::ptr::null_mut(), jni::objects::JString::into_raw),
+        Err(msg) => {
+            let _ = env.throw_new("java/lang/IllegalArgumentException", msg);
+            std::ptr::null_mut()
+        }
+    }
+}
+
+fn run_public(
+    env: &mut JNIEnv<'_>,
+    ikm: &JByteArray<'_>,
+    pipeline: &JString<'_>,
+    profile: &JString<'_>,
+    purpose: &JString<'_>,
+    index: jint,
+) -> Result<String, String> {
+    let mut ikm_bytes = env.convert_byte_array(ikm).map_err(|e| e.to_string())?;
+    let pipeline = jstring(env, pipeline)?;
+    let profile = jstring(env, profile)?;
+    let purpose = jstring(env, purpose)?;
+    let index = u32::try_from(index).map_err(|_| "index must be non-negative".to_owned())?;
+
+    let result = public_key(&ikm_bytes, &pipeline, &profile, &purpose, index);
+    // Wipe the IKM copy we pulled across the boundary regardless of outcome.
+    ikm_bytes.zeroize();
+    result
+}
+
 #[cfg(test)]
 mod tests {
-    use super::derive_secret;
+    use super::{derive_secret, public_key};
 
     /// Pinned to the frozen golden vector `symmetric/hkdf-sha512` in
     /// `vectors/v1.json` (ikm 00..1f, purpose "test", index 0). Proves the JNI
@@ -186,5 +267,20 @@ mod tests {
         let ikm: Vec<u8> = (0u8..32).collect();
         // x25519 is classical: SHAKE256 is not an accepted pipeline for it.
         assert!(derive_secret(&ikm, "shake256", "x25519", "test", 0).is_err());
+    }
+
+    #[test]
+    fn public_key_is_deterministic_base64() {
+        let ikm: Vec<u8> = (0u8..32).collect();
+        let a = public_key(&ikm, "", "x25519", "wg-home", 0).unwrap();
+        let b = public_key(&ikm, "", "x25519", "wg-home", 0).unwrap();
+        assert_eq!(a, b);
+        assert_eq!(a.len(), 44); // base64 of the 32-byte x25519 public key
+    }
+
+    #[test]
+    fn public_key_rejects_symmetric() {
+        let ikm: Vec<u8> = (0u8..32).collect();
+        assert!(public_key(&ikm, "", "symmetric", "test", 0).is_err());
     }
 }
