@@ -5,24 +5,30 @@ import android.nfc.Tag
 import android.nfc.tech.IsoDep
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import app.ykdf.nfc.YubiKeyNfc
@@ -45,13 +51,20 @@ class MainActivity : ComponentActivity() {
     private val status = mutableStateOf("Tap your YubiKey to the back of the phone")
     private val output = mutableStateOf("")
 
+    // The derived secret is private key material; keep it masked until the user
+    // explicitly reveals it, and re-hide it whenever a new value is derived.
+    private val showSecret = mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Draw under the system bars with light icons over the black theme.
+        val transparentDark = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+        enableEdgeToEdge(statusBarStyle = transparentDark, navigationBarStyle = transparentDark)
         nfcAdapter = NfcAdapter.getDefaultAdapter(this)
         setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxWidth()) {
-                    DeriveScreen(pin, profile, purpose, layered, status, output)
+            MaterialTheme(colorScheme = YkdfColors) {
+                MeshBackground {
+                    DeriveScreen(pin, profile, purpose, layered, status, output, showSecret)
                 }
             }
         }
@@ -101,6 +114,9 @@ class MainActivity : ComponentActivity() {
     private fun postResult(message: String, hex: String) = runOnUiThread {
         status.value = message
         output.value = hex
+        // A freshly derived secret starts hidden, even if the previous one was
+        // revealed.
+        showSecret.value = false
     }
 
     private fun bytesToHex(bytes: ByteArray): String =
@@ -116,6 +132,7 @@ private fun DeriveScreen(
     layered: MutableState<Boolean>,
     status: MutableState<String>,
     output: MutableState<String>,
+    showSecret: MutableState<Boolean>,
 ) {
     Column(
         modifier = Modifier
@@ -125,7 +142,22 @@ private fun DeriveScreen(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("YKDF", style = MaterialTheme.typography.headlineSmall)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(
+                imageVector = Paperclip,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(36.dp),
+            )
+            Text(
+                "YKDF",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
 
         OutlinedTextField(
             value = pin.value,
@@ -153,8 +185,20 @@ private fun DeriveScreen(
 
         Text(status.value, style = MaterialTheme.typography.bodyMedium)
         if (output.value.isNotEmpty()) {
-            Text("Output", style = MaterialTheme.typography.titleMedium)
-            Text(output.value, style = MaterialTheme.typography.bodySmall)
+            val clipboard = LocalClipboardManager.current
+            Text("Private key (keep secret)", style = MaterialTheme.typography.titleMedium)
+            Text(
+                if (showSecret.value) output.value else "•••• hidden ••••",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { showSecret.value = !showSecret.value }) {
+                    Text(if (showSecret.value) "Hide" else "Show")
+                }
+                TextButton(onClick = { clipboard.setText(AnnotatedString(output.value)) }) {
+                    Text("Copy")
+                }
+            }
         }
     }
 }
