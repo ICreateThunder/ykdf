@@ -1,4 +1,4 @@
 # deny.toml — cargo-deny's `db-path = "~/.cargo/advisory-db"`.
 deny.toml:personal-tilde-dotfile-path:13
 # format.rs — PEM header string literal in the OpenSSH formatter (not a real key).
-apps/cli/src/format.rs:private-key:223
+apps/cli/src/format.rs:private-key:193

@@ -5,24 +5,30 @@ import android.nfc.Tag
 import android.nfc.tech.IsoDep
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import app.ykdf.nfc.YubiKeyNfc
@@ -45,13 +51,26 @@ class MainActivity : ComponentActivity() {
     private val status = mutableStateOf("Tap your YubiKey to the back of the phone")
     private val output = mutableStateOf("")
 
+    // The derived secret is private key material; keep it masked until the user
+    // explicitly reveals it, and re-hide it whenever a new value is derived.
+    private val showSecret = mutableStateOf(false)
+
+    // The public key for the derivation (empty for profiles without one, e.g.
+    // symmetric/raw). Not secret, so it is shown openly.
+    private val publicKey = mutableStateOf("")
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Draw under the system bars with light icons over the black theme.
+        val transparentDark = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+        enableEdgeToEdge(statusBarStyle = transparentDark, navigationBarStyle = transparentDark)
         nfcAdapter = NfcAdapter.getDefaultAdapter(this)
         setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxWidth()) {
-                    DeriveScreen(pin, profile, purpose, layered, status, output)
+            MaterialTheme(colorScheme = YkdfColors) {
+                MeshBackground {
+                    DeriveScreen(
+                        pin, profile, purpose, layered, status, output, showSecret, publicKey,
+                    )
                 }
             }
         }
@@ -80,16 +99,24 @@ class MainActivity : ComponentActivity() {
         post("Reading YubiKey...")
         val pinBytes = pin.value.toByteArray(Charsets.US_ASCII)
         try {
+            val prof = profile.value.trim()
+            val purp = purpose.value.trim()
             val ikm = YubiKeyNfc.deriveIkm(isoDep, pinBytes, layered.value)
             // Empty pipeline => the profile's default, matching the CLI.
-            val secret = Native.derive(ikm, "", profile.value.trim(), purpose.value.trim(), 0)
+            val secret = Native.derive(ikm, "", prof, purp, 0)
+            // The public key (if this profile has one) comes from the same IKM.
+            val pub = try {
+                Native.derivePublic(ikm, "", prof, purp, 0)
+            } catch (e: Exception) {
+                "" // symmetric/raw have no public key
+            }
             ikm.fill(0)
             val hex = bytesToHex(secret)
             val size = secret.size
             secret.fill(0)
-            postResult("Derived $size bytes", hex)
+            postResult("Derived $size bytes", hex, pub)
         } catch (e: Exception) {
-            postResult("Error: ${e.message}", "")
+            postResult("Error: ${e.message}", "", "")
         } finally {
             pinBytes.fill(0)
             runCatching { isoDep.close() }
@@ -98,9 +125,13 @@ class MainActivity : ComponentActivity() {
 
     private fun post(message: String) = runOnUiThread { status.value = message }
 
-    private fun postResult(message: String, hex: String) = runOnUiThread {
+    private fun postResult(message: String, hex: String, pub: String) = runOnUiThread {
         status.value = message
         output.value = hex
+        publicKey.value = pub
+        // A freshly derived secret starts hidden, even if the previous one was
+        // revealed.
+        showSecret.value = false
     }
 
     private fun bytesToHex(bytes: ByteArray): String =
@@ -116,6 +147,8 @@ private fun DeriveScreen(
     layered: MutableState<Boolean>,
     status: MutableState<String>,
     output: MutableState<String>,
+    showSecret: MutableState<Boolean>,
+    publicKey: MutableState<String>,
 ) {
     Column(
         modifier = Modifier
@@ -125,7 +158,22 @@ private fun DeriveScreen(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("YKDF", style = MaterialTheme.typography.headlineSmall)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(
+                imageVector = Paperclip,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(36.dp),
+            )
+            Text(
+                "YKDF",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
 
         OutlinedTextField(
             value = pin.value,
@@ -152,9 +200,28 @@ private fun DeriveScreen(
         }
 
         Text(status.value, style = MaterialTheme.typography.bodyMedium)
+        val clipboard = LocalClipboardManager.current
         if (output.value.isNotEmpty()) {
-            Text("Output", style = MaterialTheme.typography.titleMedium)
-            Text(output.value, style = MaterialTheme.typography.bodySmall)
+            Text("Private key (keep secret)", style = MaterialTheme.typography.titleMedium)
+            Text(
+                if (showSecret.value) output.value else "•••• hidden ••••",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { showSecret.value = !showSecret.value }) {
+                    Text(if (showSecret.value) "Hide" else "Show")
+                }
+                TextButton(onClick = { clipboard.setText(AnnotatedString(output.value)) }) {
+                    Text("Copy")
+                }
+            }
+        }
+        if (publicKey.value.isNotEmpty()) {
+            Text("Public key", style = MaterialTheme.typography.titleMedium)
+            Text(publicKey.value, style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = { clipboard.setText(AnnotatedString(publicKey.value)) }) {
+                Text("Copy")
+            }
         }
     }
 }

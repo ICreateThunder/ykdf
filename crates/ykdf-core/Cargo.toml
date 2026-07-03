@@ -14,9 +14,13 @@ workspace = true
 [features]
 default = []
 argon2 = ["dep:argon2"]
+# Public-key/output formatting (base64, OpenSSH, bech32 age). Off by default so
+# the minimal core stays lean; the CLI and JNI enable it.
+format = ["dep:base64"]
 
 [dependencies]
 argon2 = { workspace = true, optional = true }
+base64 = { version = "0.22", optional = true }
 zeroize.workspace = true
 hmac.workspace = true
 sha2.workspace = true

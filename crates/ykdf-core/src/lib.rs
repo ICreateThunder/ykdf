@@ -26,6 +26,9 @@ mod types;
 #[cfg(feature = "argon2")]
 mod stretch;
 
+#[cfg(feature = "format")]
+mod format;
+
 pub use self::context::Context;
 pub use self::derive::{derive, derive_raw};
 pub use self::error::{Error, Result};
@@ -42,3 +45,6 @@ pub use self::types::{ExpandedBytes, Ikm, MIN_IKM_LEN, MasterKey};
 pub use self::stretch::{
     Argon2Params, StretchedPassphrase, cascade_passphrase, stretch_passphrase,
 };
+
+#[cfg(feature = "format")]
+pub use self::format::public_key_string;

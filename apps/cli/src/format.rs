@@ -62,43 +62,13 @@ pub fn format_output(
 }
 
 /// Format a public key from profile output.
+///
+/// Delegates to the shared `ykdf_core::public_key_string` so the CLI and the
+/// Android JNI bridge produce byte-identical public keys.
 pub fn format_pubkey(output: &ProfileOutput, profile: Profile) -> Result<Vec<u8>, CliError> {
-    if matches!(profile, Profile::Symmetric | Profile::Raw) {
-        return Err(CliError::NoPubkey {
-            profile: profile.as_str(),
-        });
-    }
-    match output {
-        ProfileOutput::SecretKey(k) => {
-            let secret = x25519_dalek::StaticSecret::from(k.0);
-            let public = x25519_dalek::PublicKey::from(&secret);
-            Ok(line(BASE64.encode(public.as_bytes())))
-        }
-        ProfileOutput::Ed25519Seed(s) => {
-            let signing = ed25519_dalek::SigningKey::from_bytes(&s.0);
-            let verifying = signing.verifying_key();
-            let mut pubkey_blob = Vec::new();
-            write_openssh_string(&mut pubkey_blob, b"ssh-ed25519");
-            write_openssh_string(&mut pubkey_blob, verifying.as_bytes());
-            Ok(line(format!("ssh-ed25519 {}", BASE64.encode(&pubkey_blob))))
-        }
-        ProfileOutput::AgeIdentity(a) => {
-            let secret = x25519_dalek::StaticSecret::from(a.secret_key);
-            let public = x25519_dalek::PublicKey::from(&secret);
-            let hrp = bech32::Hrp::parse("age").map_err(|_| CliError::NoPubkey {
-                profile: profile.as_str(),
-            })?;
-            let recipient =
-                bech32::encode::<bech32::Bech32>(hrp, public.as_bytes()).map_err(|_| {
-                    CliError::NoPubkey {
-                        profile: profile.as_str(),
-                    }
-                })?;
-            Ok(line(recipient))
-        }
-        ProfileOutput::MlKemKeypair(kp) => Ok(line(BASE64.encode(&kp.encapsulation_key))),
-        ProfileOutput::MlDsaKeypair(kp) => Ok(line(BASE64.encode(&kp.verifying_key))),
-        ProfileOutput::Raw(_) => Err(CliError::NoPubkey {
+    match ykdf_core::public_key_string(output, profile) {
+        Some(s) => Ok(line(s)),
+        None => Err(CliError::NoPubkey {
             profile: profile.as_str(),
         }),
     }

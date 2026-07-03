@@ -16,7 +16,7 @@ name = "ykdf"
 path = "src/main.rs"
 
 [dependencies]
-ykdf-core = { path = "../../crates/ykdf-core", version = "0.2.0", features = ["argon2"] }
+ykdf-core = { path = "../../crates/ykdf-core", version = "0.2.0", features = ["argon2", "format"] }
 ykdf-yubikey = { path = "../../crates/ykdf-yubikey", version = "0.2.0" }
 clap = { version = "4", features = ["derive"] }
 base64 = "0.22"
