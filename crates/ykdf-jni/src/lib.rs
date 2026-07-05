@@ -218,8 +218,12 @@ fn throw_illegal_arg(env: &mut Env<'_>, msg: String) -> jni::errors::Error {
     )) {
         // `throw` sets the pending exception and returns Err(JavaException).
         Err(e) => e,
-        // It only returns Ok if nothing was thrown; surface a JavaException so
-        // the failure is never silently swallowed.
+        // Unreachable under the jni 0.22 contract (`throw` returns Err after
+        // setting the exception); this arm exists only in case a future jni
+        // major changes that. We still return JavaException so a failure to
+        // throw can never masquerade as a successful, exception-free derivation
+        // -- worst case `resolve` finds no pending exception and throws a
+        // RuntimeException. Revisit when bumping the jni major version.
         Ok(()) => jni::errors::Error::JavaException,
     }
 }
