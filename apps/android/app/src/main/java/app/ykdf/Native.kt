@@ -51,4 +51,11 @@ object Native {
         purpose: String,
         index: Int,
     ): String
+
+    /**
+     * The profile labels ykdf-core accepts, in canonical order (the same set as
+     * the CLI's `--profile`). Sourced from `Profile::ALL` in core so the UI
+     * cannot drift from the supported profiles. Not secret; takes no input.
+     */
+    external fun profiles(): Array<String>
 }

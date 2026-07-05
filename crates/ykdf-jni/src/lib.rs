@@ -100,53 +100,136 @@ fn secret_bytes(output: &ProfileOutput) -> Vec<u8> {
     }
 }
 
+/// The profile labels `ykdf-core` accepts, in canonical order. This is the same
+/// set the CLI's `--profile` accepts, sourced from `Profile::ALL` so the app's
+/// picker cannot drift from core when a profile is added or removed.
+#[must_use]
+pub fn profile_labels() -> Vec<&'static str> {
+    Profile::ALL.iter().map(Profile::as_str).collect()
+}
+
 // --- JNI marshalling shim ---
 //
-// Confined to this module so the `unsafe` attribute the export requires does
-// not bleed into the logic above. `#[unsafe(no_mangle)] extern "system"` is the
-// only way the JVM can resolve the native method by symbol name.
+// Confined to this module so the `unsafe` the export requires does not bleed
+// into the logic above. In jni 0.22 a native method is handed an `EnvUnowned`
+// and must upgrade it to a real `Env` inside `with_env`, whose closure runs
+// under `catch_unwind`; `resolve` then maps any returned error, or a panic, to
+// a Java exception. This closes the pre-0.22 hole where a panic in the
+// derivation could unwind across the `extern "system"` boundary (undefined
+// behaviour) on the very path that handles key material.
 
-use jni::JNIEnv;
-use jni::objects::{JByteArray, JClass, JString};
-use jni::sys::{jbyteArray, jint, jstring};
+use jni::errors::ThrowRuntimeExAndDefault;
+use jni::objects::{JByteArray, JClass, JObjectArray, JString};
+use jni::strings::JNIString;
+use jni::sys::jint;
+use jni::{Env, EnvUnowned, jni_str};
 use zeroize::Zeroize;
 
 /// JNI entry point for `app.ykdf.Native.derive(...)`.
 ///
-/// On success returns a freshly allocated `byte[]`. On any error it throws a
-/// Java `IllegalArgumentException` carrying the message and returns null.
+/// Returns a freshly allocated `byte[]` on success. A validation failure throws
+/// `IllegalArgumentException`; any unexpected error or a panic becomes a
+/// `RuntimeException`. On any failure the returned (null) array is ignored by
+/// the JVM in favour of the pending exception.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_app_ykdf_Native_derive<'local>(
-    mut env: JNIEnv<'local>,
+    mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
     ikm: JByteArray<'local>,
     pipeline: JString<'local>,
     profile: JString<'local>,
     purpose: JString<'local>,
     index: jint,
-) -> jbyteArray {
-    match run(&mut env, &ikm, &pipeline, &profile, &purpose, index) {
-        Ok(mut bytes) => {
-            // Copy into the JVM, then wipe this last native-side copy. The
-            // derived secret would otherwise sit in freed heap after drop,
-            // escaping the ZeroizeOnDrop chain of Ikm/MasterKey/ProfileOutput.
-            let array = env
-                .byte_array_from_slice(&bytes)
-                .map_or(std::ptr::null_mut(), JByteArray::into_raw);
-            bytes.zeroize();
-            array
+) -> JByteArray<'local> {
+    env.with_env(|env| -> jni::errors::Result<JByteArray> {
+        match run(env, &ikm, &pipeline, &profile, &purpose, index) {
+            Ok(mut bytes) => {
+                // Copy into the JVM, then wipe this last native-side copy. The
+                // derived secret would otherwise sit in freed heap after drop,
+                // escaping the ZeroizeOnDrop chain of Ikm/MasterKey/ProfileOutput.
+                let array = env.byte_array_from_slice(&bytes)?;
+                bytes.zeroize();
+                Ok(array)
+            }
+            Err(msg) => Err(throw_illegal_arg(env, msg)),
         }
-        Err(msg) => {
-            // Leaves a pending exception on the JVM; the returned null is
-            // ignored once an exception is set.
-            let _ = env.throw_new("java/lang/IllegalArgumentException", msg);
-            std::ptr::null_mut()
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// JNI entry point for `app.ykdf.Native.derivePublic(...)`.
+///
+/// Returns a Java `String` with the formatted public key. A validation failure
+/// (including a profile with no public key) throws `IllegalArgumentException`;
+/// any unexpected error or a panic becomes a `RuntimeException`. The public key
+/// is not secret, so it is not zeroized.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_app_ykdf_Native_derivePublic<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    ikm: JByteArray<'local>,
+    pipeline: JString<'local>,
+    profile: JString<'local>,
+    purpose: JString<'local>,
+    index: jint,
+) -> JString<'local> {
+    env.with_env(|env| -> jni::errors::Result<JString> {
+        match run_public(env, &ikm, &pipeline, &profile, &purpose, index) {
+            Ok(s) => Ok(env.new_string(s)?),
+            Err(msg) => Err(throw_illegal_arg(env, msg)),
         }
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// JNI entry point for `app.ykdf.Native.profiles()`.
+///
+/// Returns the supported profile labels as a Java `String[]`, sourced from
+/// `ykdf-core` so the app's picker stays in step with the core. Not secret and
+/// cannot fail on valid inputs; a JNI allocation failure or panic becomes a
+/// `RuntimeException` and a null array.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_app_ykdf_Native_profiles<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+) -> JObjectArray<'local, JString<'local>> {
+    env.with_env(|env| -> jni::errors::Result<JObjectArray<JString>> {
+        let labels = profile_labels();
+        let empty = env.new_string("")?;
+        let array = JObjectArray::<JString>::new(env, labels.len(), &empty)?;
+        for (i, label) in labels.into_iter().enumerate() {
+            let element = env.new_string(label)?;
+            array.set_element(env, i, &element)?;
+        }
+        Ok(array)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Throw a Java `IllegalArgumentException` carrying `msg`, returning the
+/// resulting `Error::JavaException`. Returning this error (rather than leaving
+/// the policy to throw) makes `ThrowRuntimeExAndDefault` observe the pending
+/// exception and defer to it, so the `IllegalArgumentException` the Kotlin side
+/// documents is preserved instead of being replaced by a `RuntimeException`.
+fn throw_illegal_arg(env: &mut Env<'_>, msg: String) -> jni::errors::Error {
+    match env.throw((
+        jni_str!("java/lang/IllegalArgumentException"),
+        JNIString::from(msg),
+    )) {
+        // `throw` sets the pending exception and returns Err(JavaException).
+        Err(e) => e,
+        // Unreachable under the jni 0.22 contract (`throw` returns Err after
+        // setting the exception); this arm exists only in case a future jni
+        // major changes that. We still return JavaException so a failure to
+        // throw can never masquerade as a successful, exception-free derivation
+        // -- worst case `resolve` finds no pending exception and throws a
+        // RuntimeException. Revisit when bumping the jni major version.
+        Ok(()) => jni::errors::Error::JavaException,
     }
 }
 
 fn run(
-    env: &mut JNIEnv<'_>,
+    env: &mut Env<'_>,
     ikm: &JByteArray<'_>,
     pipeline: &JString<'_>,
     profile: &JString<'_>,
@@ -165,41 +248,12 @@ fn run(
     result
 }
 
-fn jstring(env: &mut JNIEnv<'_>, s: &JString<'_>) -> Result<String, String> {
-    env.get_string(s)
-        .map(|js| js.to_string_lossy().into_owned())
-        .map_err(|e| e.to_string())
-}
-
-/// JNI entry point for `app.ykdf.Native.derivePublic(...)`.
-///
-/// On success returns a Java `String` with the formatted public key. On any
-/// error (including a profile with no public key) it throws a Java
-/// `IllegalArgumentException` and returns null. The public key is not secret,
-/// so it is not zeroized.
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_app_ykdf_Native_derivePublic<'local>(
-    mut env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    ikm: JByteArray<'local>,
-    pipeline: JString<'local>,
-    profile: JString<'local>,
-    purpose: JString<'local>,
-    index: jint,
-) -> jstring {
-    match run_public(&mut env, &ikm, &pipeline, &profile, &purpose, index) {
-        Ok(s) => env
-            .new_string(s)
-            .map_or(std::ptr::null_mut(), jni::objects::JString::into_raw),
-        Err(msg) => {
-            let _ = env.throw_new("java/lang/IllegalArgumentException", msg);
-            std::ptr::null_mut()
-        }
-    }
+fn jstring(env: &mut Env<'_>, s: &JString<'_>) -> Result<String, String> {
+    s.try_to_string(env).map_err(|e| e.to_string())
 }
 
 fn run_public(
-    env: &mut JNIEnv<'_>,
+    env: &mut Env<'_>,
     ikm: &JByteArray<'_>,
     pipeline: &JString<'_>,
     profile: &JString<'_>,
@@ -213,7 +267,6 @@ fn run_public(
     let index = u32::try_from(index).map_err(|_| "index must be non-negative".to_owned())?;
 
     let result = public_key(&ikm_bytes, &pipeline, &profile, &purpose, index);
-    // Wipe the IKM copy we pulled across the boundary regardless of outcome.
     ikm_bytes.zeroize();
     result
 }
@@ -282,5 +335,16 @@ mod tests {
     fn public_key_rejects_symmetric() {
         let ikm: Vec<u8> = (0u8..32).collect();
         assert!(public_key(&ikm, "", "symmetric", "test", 0).is_err());
+    }
+
+    #[test]
+    fn profile_labels_cover_core() {
+        // The app's picker is built from this list, so it must match core's
+        // canonical set exactly and every label must parse back to a profile.
+        let labels = super::profile_labels();
+        assert_eq!(labels.len(), ykdf_core::Profile::ALL.len());
+        for label in labels {
+            assert!(ykdf_core::Profile::from_str_label(label).is_some());
+        }
     }
 }
