@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
   "crates/ykdf-core",
+  "crates/ykdf-config",
   "crates/ykdf-yubikey",
   "crates/ykdf-jni",
   "apps/cli",
