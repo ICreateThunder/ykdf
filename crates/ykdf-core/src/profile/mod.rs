@@ -112,6 +112,24 @@ impl Profile {
         }
     }
 
+    /// Every profile, in canonical order. The single source of truth for
+    /// enumerating supported profiles (consumed by the CLI, the JNI bridge, and
+    /// the Android UI); keep in step with [`Profile::from_str_label`] and
+    /// [`Profile::as_str`].
+    pub const ALL: [Self; 11] = [
+        Self::X25519,
+        Self::Ed25519,
+        Self::AgeX25519,
+        Self::Symmetric,
+        Self::MlKem512,
+        Self::MlKem768,
+        Self::MlKem1024,
+        Self::MlDsa44,
+        Self::MlDsa65,
+        Self::MlDsa87,
+        Self::Raw,
+    ];
+
     /// Parses a profile from its wire-format label, returning `None` if unknown.
     pub fn from_str_label(s: &str) -> Option<Self> {
         match s {
@@ -234,6 +252,7 @@ pub fn post_process(profile: Profile, expanded: &ExpandedBytes) -> Result<Profil
 #[cfg(test)]
 mod tests {
     use super::take_fixed;
+    use crate::Profile;
     use crate::types::ExpandedBytes;
 
     #[test]
@@ -243,5 +262,19 @@ mod tests {
         assert!(take_fixed::<32>(&ExpandedBytes::new(vec![0u8; 31])).is_err());
         assert!(take_fixed::<32>(&ExpandedBytes::new(vec![0u8; 33])).is_err());
         assert!(take_fixed::<32>(&ExpandedBytes::new(vec![0u8; 32])).is_ok());
+    }
+
+    #[test]
+    fn all_profiles_round_trip_and_are_unique() {
+        // Guards the canonical `Profile::ALL` set: every entry must map back to
+        // itself through its label, and no two entries may share a label. This
+        // keeps the CLI, JNI bridge, and app in agreement on the profile list.
+        let mut seen = std::collections::HashSet::new();
+        for profile in Profile::ALL {
+            let label = profile.as_str();
+            assert_eq!(Profile::from_str_label(label), Some(profile));
+            assert!(seen.insert(label), "duplicate label in ALL");
+        }
+        assert_eq!(Profile::ALL.len(), seen.len());
     }
 }

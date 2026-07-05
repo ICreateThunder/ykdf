@@ -18,13 +18,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -138,6 +144,7 @@ class MainActivity : ComponentActivity() {
         bytes.joinToString("") { "%02x".format(it) }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Suppress("ComposableNaming")
 @androidx.compose.runtime.Composable
 private fun DeriveScreen(
@@ -182,12 +189,44 @@ private fun DeriveScreen(
             visualTransformation = PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth(),
         )
-        OutlinedTextField(
-            value = profile.value,
-            onValueChange = { profile.value = it },
-            label = { Text("Profile") },
-            modifier = Modifier.fillMaxWidth(),
-        )
+        // The picker is driven by ykdf-core (via JNI) so it never drifts from
+        // the profiles the core actually supports. Fall back to a single entry
+        // only if the native call somehow fails, so the field is never empty.
+        val profiles = remember {
+            runCatching { Native.profiles().toList() }.getOrDefault(listOf("x25519"))
+        }
+        val profileExpanded = remember { mutableStateOf(false) }
+        ExposedDropdownMenuBox(
+            expanded = profileExpanded.value,
+            onExpandedChange = { profileExpanded.value = it },
+        ) {
+            OutlinedTextField(
+                value = profile.value,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Profile") },
+                trailingIcon = {
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = profileExpanded.value)
+                },
+                modifier = Modifier
+                    .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                    .fillMaxWidth(),
+            )
+            ExposedDropdownMenu(
+                expanded = profileExpanded.value,
+                onDismissRequest = { profileExpanded.value = false },
+            ) {
+                profiles.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option) },
+                        onClick = {
+                            profile.value = option
+                            profileExpanded.value = false
+                        },
+                    )
+                }
+            }
+        }
         OutlinedTextField(
             value = purpose.value,
             onValueChange = { purpose.value = it },

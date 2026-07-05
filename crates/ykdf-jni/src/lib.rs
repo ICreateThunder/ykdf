@@ -100,6 +100,14 @@ fn secret_bytes(output: &ProfileOutput) -> Vec<u8> {
     }
 }
 
+/// The profile labels `ykdf-core` accepts, in canonical order. This is the same
+/// set the CLI's `--profile` accepts, sourced from `Profile::ALL` so the app's
+/// picker cannot drift from core when a profile is added or removed.
+#[must_use]
+pub fn profile_labels() -> Vec<&'static str> {
+    Profile::ALL.iter().map(Profile::as_str).collect()
+}
+
 // --- JNI marshalling shim ---
 //
 // Confined to this module so the `unsafe` the export requires does not bleed
@@ -111,7 +119,7 @@ fn secret_bytes(output: &ProfileOutput) -> Vec<u8> {
 // behaviour) on the very path that handles key material.
 
 use jni::errors::ThrowRuntimeExAndDefault;
-use jni::objects::{JByteArray, JClass, JString};
+use jni::objects::{JByteArray, JClass, JObjectArray, JString};
 use jni::strings::JNIString;
 use jni::sys::jint;
 use jni::{Env, EnvUnowned, jni_str};
@@ -170,6 +178,30 @@ pub extern "system" fn Java_app_ykdf_Native_derivePublic<'local>(
             Ok(s) => Ok(env.new_string(s)?),
             Err(msg) => Err(throw_illegal_arg(env, msg)),
         }
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// JNI entry point for `app.ykdf.Native.profiles()`.
+///
+/// Returns the supported profile labels as a Java `String[]`, sourced from
+/// `ykdf-core` so the app's picker stays in step with the core. Not secret and
+/// cannot fail on valid inputs; a JNI allocation failure or panic becomes a
+/// `RuntimeException` and a null array.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_app_ykdf_Native_profiles<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+) -> JObjectArray<'local, JString<'local>> {
+    env.with_env(|env| -> jni::errors::Result<JObjectArray<JString>> {
+        let labels = profile_labels();
+        let empty = env.new_string("")?;
+        let array = JObjectArray::<JString>::new(env, labels.len(), &empty)?;
+        for (i, label) in labels.into_iter().enumerate() {
+            let element = env.new_string(label)?;
+            array.set_element(env, i, &element)?;
+        }
+        Ok(array)
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }
@@ -299,5 +331,16 @@ mod tests {
     fn public_key_rejects_symmetric() {
         let ikm: Vec<u8> = (0u8..32).collect();
         assert!(public_key(&ikm, "", "symmetric", "test", 0).is_err());
+    }
+
+    #[test]
+    fn profile_labels_cover_core() {
+        // The app's picker is built from this list, so it must match core's
+        // canonical set exactly and every label must parse back to a profile.
+        let labels = super::profile_labels();
+        assert_eq!(labels.len(), ykdf_core::Profile::ALL.len());
+        for label in labels {
+            assert!(ykdf_core::Profile::from_str_label(label).is_some());
+        }
     }
 }
