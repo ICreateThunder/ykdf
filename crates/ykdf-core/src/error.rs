@@ -82,7 +82,52 @@ pub enum Error {
 
 impl core::fmt::Display for Error {
     fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::result::Result<(), core::fmt::Error> {
-        write!(fmt, "{self:?}")
+        match self {
+            Error::InvalidContext { input } => {
+                write!(fmt, "invalid context string: {input:?}")
+            }
+            Error::InvalidPurpose { purpose } => write!(
+                fmt,
+                "purpose must be 1 to 64 characters of a-z, 0-9 or '-' (got {purpose:?})"
+            ),
+            Error::InvalidProfile { profile } => write!(fmt, "unknown profile: {profile:?}"),
+            Error::InvalidPipeline { pipeline } => write!(fmt, "unknown pipeline: {pipeline:?}"),
+            Error::InvalidIndex { index } => {
+                write!(
+                    fmt,
+                    "index must be an unsigned 32-bit integer (got {index:?})"
+                )
+            }
+            Error::InsufficientIkm { len, min } => {
+                write!(
+                    fmt,
+                    "input key material is {len} bytes, need at least {min}"
+                )
+            }
+            Error::PipelineMismatch { profile, pipeline } => {
+                write!(
+                    fmt,
+                    "profile {profile} does not accept the {pipeline} pipeline"
+                )
+            }
+            Error::ExpandOutputTooLong { requested, max } => write!(
+                fmt,
+                "requested output of {requested} bytes exceeds the maximum of {max} for this hash"
+            ),
+            Error::InvalidPrkLength { len, expected } => {
+                write!(fmt, "pseudorandom key is {len} bytes, expected {expected}")
+            }
+            Error::ProfileMismatch { expected, got } => {
+                write!(fmt, "expected the {expected} profile, got {got}")
+            }
+            Error::ZeroLengthOutput => write!(fmt, "requested output length is zero"),
+            Error::ExpandLength { expected, got } => {
+                write!(fmt, "expand produced {got} bytes, expected {expected}")
+            }
+            Error::PostProcessing { detail } => {
+                write!(fmt, "profile post-processing failed: {detail}")
+            }
+        }
     }
 }
 
@@ -94,8 +139,9 @@ mod tests {
 
     #[test]
     fn display_is_non_empty_and_carries_detail() {
-        // Display delegates to Debug; confirm every kind renders a non-empty
-        // message that includes the variant's data, so error output is useful.
+        // Every kind must render a non-empty, human-readable message that
+        // includes the variant's data, so the text the CLI and app surface is
+        // useful rather than a raw struct dump.
         let cases = [
             Error::InvalidContext {
                 input: "bad".to_string(),
@@ -139,7 +185,14 @@ mod tests {
             },
         ];
         for case in &cases {
-            assert!(!case.to_string().is_empty());
+            let message = case.to_string();
+            assert!(!message.is_empty());
+            // Guard against Display regressing to the `{self:?}` struct dump:
+            // a human message never contains a `Variant { field: ... }` brace.
+            assert!(
+                !message.contains('{'),
+                "error Display looks like a Debug dump: {message}"
+            );
         }
 
         assert!(
