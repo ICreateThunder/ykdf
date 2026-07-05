@@ -1,0 +1,17 @@
+[package]
+name = "ykdf-config"
+description = "Named derivation recipes: a labels-only TOML catalogue shared by the CLI and app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+ykdf-core = { path = "../ykdf-core", version = "0.2.0" }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"

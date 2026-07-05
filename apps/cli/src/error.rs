@@ -4,6 +4,12 @@ use std::path::PathBuf;
 pub enum CliError {
     /// Error from ykdf-core.
     Core(ykdf_core::Error),
+    /// Error loading, parsing, or resolving a recipe from the config file.
+    Config(ykdf_config::ConfigError),
+    /// No profile given: needed when no recipe supplies one.
+    MissingProfile,
+    /// No purpose given: needed when no recipe supplies one.
+    MissingPurpose,
     /// Failed to read IKM file.
     IkmRead {
         path: PathBuf,
@@ -56,6 +62,8 @@ impl CliError {
             | Self::InvalidMgmtKey
             | Self::InvalidImportKey
             | Self::MultipleStdinSecrets
+            | Self::MissingProfile
+            | Self::MissingPurpose
             | Self::CloneStdinUnsupported { .. } => 2,
             _ => 1,
         }
@@ -68,10 +76,25 @@ impl From<ykdf_core::Error> for CliError {
     }
 }
 
+impl From<ykdf_config::ConfigError> for CliError {
+    fn from(e: ykdf_config::ConfigError) -> Self {
+        Self::Config(e)
+    }
+}
+
 impl std::fmt::Display for CliError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Core(e) => write!(f, "{e}"),
+            Self::Config(e) => write!(f, "{e}"),
+            Self::MissingProfile => write!(
+                f,
+                "no profile given: pass --profile, or name a recipe that sets one"
+            ),
+            Self::MissingPurpose => write!(
+                f,
+                "no purpose given: pass --purpose, or name a recipe that sets one"
+            ),
             Self::IkmRead { path, source } => {
                 write!(f, "failed to read IKM from {}: {source}", path.display())
             }

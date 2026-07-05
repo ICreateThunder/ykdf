@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::path::Path;
 
 use ykdf_core::{
     Argon2Params, Context, Pipeline, Profile, cascade_passphrase, derive, derive_raw, extract,
@@ -6,34 +7,104 @@ use ykdf_core::{
 };
 use zeroize::Zeroizing;
 
-use crate::cli::{DeriveArgs, PubkeyArgs};
+use crate::cli::{DeriveArgs, PipelineArg, ProfileArg, PubkeyArgs};
 use crate::error::CliError;
 use crate::format;
 use crate::ikm::IkmSource;
 
-pub fn run_derive(args: DeriveArgs) -> Result<(), CliError> {
-    let profile: Profile = args.profile.into();
-    let pipeline: Pipeline = args
-        .pipeline
-        .map_or_else(|| profile.default_pipeline(), Into::into);
+/// Derivation parameters after merging a recipe (if any) with explicit flags.
+struct Params {
+    profile: Profile,
+    pipeline: Pipeline,
+    purpose: String,
+    index: u32,
+    layered: bool,
+}
 
-    if args.length.is_some() && profile != Profile::Raw {
+/// Merge an optional named recipe with explicit flags, applying SSH-style
+/// precedence: explicit flag > recipe field > `[defaults]` > profile default.
+///
+/// `--layered` is additive (a flag or a recipe can turn it on; there is no CLI
+/// way to force it off for a recipe that sets it).
+fn resolve_params(
+    recipe: Option<&str>,
+    config: Option<&Path>,
+    profile: Option<ProfileArg>,
+    purpose: Option<String>,
+    pipeline: Option<PipelineArg>,
+    index: Option<u32>,
+    layered_flag: bool,
+) -> Result<Params, CliError> {
+    let recipe = match recipe {
+        Some(name) => Some(ykdf_config::Catalogue::load(config)?.resolve(name)?),
+        None => None,
+    };
+
+    let profile: Profile = match profile {
+        Some(p) => p.into(),
+        None => recipe
+            .as_ref()
+            .map(|r| r.profile)
+            .ok_or(CliError::MissingProfile)?,
+    };
+    let purpose: String = match purpose {
+        Some(p) => p,
+        None => recipe
+            .as_ref()
+            .map(|r| r.purpose.clone())
+            .ok_or(CliError::MissingPurpose)?,
+    };
+    let pipeline: Pipeline = pipeline
+        .map(Into::into)
+        .or_else(|| recipe.as_ref().and_then(|r| r.pipeline))
+        .unwrap_or_else(|| profile.default_pipeline());
+    let index = index
+        .or_else(|| recipe.as_ref().map(|r| r.index))
+        .unwrap_or(0);
+    let layered = layered_flag || recipe.as_ref().is_some_and(|r| r.layered);
+
+    Ok(Params {
+        profile,
+        pipeline,
+        purpose,
+        index,
+        layered,
+    })
+}
+
+pub fn run_derive(args: DeriveArgs, config: Option<&Path>) -> Result<(), CliError> {
+    let params = resolve_params(
+        args.recipe.as_deref(),
+        config,
+        args.profile,
+        args.purpose,
+        args.pipeline,
+        args.index,
+        args.layered,
+    )?;
+
+    if args.length.is_some() && params.profile != Profile::Raw {
         return Err(CliError::LengthRequiresRaw);
     }
-    if profile == Profile::Raw && args.length.is_none() {
+    if params.profile == Profile::Raw && args.length.is_none() {
         return Err(CliError::RawRequiresLength);
     }
 
-    let context = build_context(profile, pipeline, &args.purpose, args.index)?;
+    let context = build_context(
+        params.profile,
+        params.pipeline,
+        &params.purpose,
+        params.index,
+    )?;
     let mut master_key = extract_ikm(
         args.ikm_file.as_ref(),
-        args.layered,
+        params.layered,
         args.transport.to_override(),
-        pipeline,
+        params.pipeline,
     )?;
 
     if args.passphrase {
-        master_key = apply_passphrase(&master_key, pipeline)?;
+        master_key = apply_passphrase(&master_key, params.pipeline)?;
     }
 
     let output = if let Some(len) = args.length {
@@ -44,7 +115,7 @@ pub fn run_derive(args: DeriveArgs) -> Result<(), CliError> {
 
     let formatted = Zeroizing::new(format::format_output(
         &output,
-        profile,
+        params.profile,
         args.format.as_ref(),
     )?);
     std::io::stdout()
@@ -52,26 +123,36 @@ pub fn run_derive(args: DeriveArgs) -> Result<(), CliError> {
         .map_err(CliError::OutputWrite)
 }
 
-pub fn run_pubkey(args: PubkeyArgs) -> Result<(), CliError> {
-    let profile: Profile = args.profile.into();
-    let pipeline: Pipeline = args
-        .pipeline
-        .map_or_else(|| profile.default_pipeline(), Into::into);
+pub fn run_pubkey(args: PubkeyArgs, config: Option<&Path>) -> Result<(), CliError> {
+    let params = resolve_params(
+        args.recipe.as_deref(),
+        config,
+        args.profile,
+        args.purpose,
+        args.pipeline,
+        args.index,
+        args.layered,
+    )?;
 
-    let context = build_context(profile, pipeline, &args.purpose, args.index)?;
+    let context = build_context(
+        params.profile,
+        params.pipeline,
+        &params.purpose,
+        params.index,
+    )?;
     let mut master_key = extract_ikm(
         args.ikm_file.as_ref(),
-        args.layered,
+        params.layered,
         args.transport.to_override(),
-        pipeline,
+        params.pipeline,
     )?;
 
     if args.passphrase {
-        master_key = apply_passphrase(&master_key, pipeline)?;
+        master_key = apply_passphrase(&master_key, params.pipeline)?;
     }
 
     let output = derive(&master_key, &context)?;
-    let formatted = Zeroizing::new(format::format_pubkey(&output, profile)?);
+    let formatted = Zeroizing::new(format::format_pubkey(&output, params.profile)?);
     std::io::stdout()
         .write_all(&formatted)
         .map_err(CliError::OutputWrite)

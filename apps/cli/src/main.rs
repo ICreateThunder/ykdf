@@ -5,6 +5,7 @@ mod error;
 mod format;
 mod ikm;
 mod init;
+mod recipe;
 mod term;
 
 use clap::Parser;
@@ -20,10 +21,12 @@ fn main() {
 }
 
 fn run(cli: Cli) -> Result<(), CliError> {
+    let config = cli.config.as_deref();
     match cli.command {
-        Commands::Derive(args) => derive::run_derive(args),
-        Commands::Pubkey(args) => derive::run_pubkey(args),
+        Commands::Derive(args) => derive::run_derive(args, config),
+        Commands::Pubkey(args) => derive::run_pubkey(args, config),
         Commands::Init(args) => init::run_init(args),
         Commands::Clone(args) => clone::run_clone(&args),
+        Commands::Recipe(args) => recipe::run_recipe(args.command, config),
     }
 }

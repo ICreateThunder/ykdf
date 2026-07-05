@@ -9,6 +9,18 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 
 ### Added
 
+- Recipes: a named catalogue of derivation parameters in a TOML file
+  (`$XDG_CONFIG_HOME/ykdf/config.toml`, overridable with `--config` or
+  `YKDF_CONFIG`), so a routine key is `ykdf derive wg-home` rather than a line of
+  flags. Each `[recipe.<name>]` sets a `profile` plus optional `purpose`
+  (defaulting to the recipe name), `pipeline`, `index`, `layered`, and
+  `description`; a `[defaults]` block fills the gaps. Values resolve in the order
+  explicit flag, recipe field, `[defaults]`, then the profile default. `ykdf
+  recipe list` and `ykdf recipe show <name>` inspect the catalogue, and
+  `derive`/`pubkey` take a recipe name positionally. The file holds labels only,
+  never a secret, and never changes what a derivation produces. The loader lives
+  in a new `ykdf-config` crate so the same parsing and validation is reused
+  wherever a recipe is resolved.
 - `ykdf clone`: provision several YubiKeys from one root in a single
   swap-session. The root secret (the slot 9d scalar, and with `--layered` the
   slot 2 HMAC secret) is generated or read once, held in host RAM, pushed to

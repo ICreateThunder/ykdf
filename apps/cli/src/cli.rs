@@ -5,6 +5,11 @@ use ykdf_core::{Pipeline, Profile};
 #[derive(Parser)]
 #[command(name = "ykdf", version, about)]
 pub struct Cli {
+    /// Path to the recipe config file (default: `$XDG_CONFIG_HOME/ykdf/config.toml`
+    /// or `$HOME/.config/ykdf/config.toml`; overrides `YKDF_CONFIG`)
+    #[arg(long, global = true, value_name = "PATH")]
+    pub config: Option<std::path::PathBuf>,
+
     #[command(subcommand)]
     pub command: Commands,
 }
@@ -20,6 +25,25 @@ pub enum Commands {
     /// Clone one root to several keys in a single swap-session (the secret
     /// stays in host RAM and is wiped on exit; never displayed or written)
     Clone(CloneArgs),
+    /// List or show named recipes from the config file
+    Recipe(RecipeArgs),
+}
+
+#[derive(clap::Args)]
+pub struct RecipeArgs {
+    #[command(subcommand)]
+    pub command: RecipeCommand,
+}
+
+#[derive(Subcommand)]
+pub enum RecipeCommand {
+    /// List the configured recipes
+    List,
+    /// Show a recipe's fully resolved derivation parameters
+    Show {
+        /// Recipe name
+        name: String,
+    },
 }
 
 #[derive(clap::Args)]
@@ -170,21 +194,27 @@ impl From<TouchPolicyArg> for ykdf_yubikey::TouchPolicy {
 
 #[derive(clap::Args)]
 pub struct DeriveArgs {
-    /// Key profile
-    #[arg(long)]
-    pub profile: ProfileArg,
+    /// Named recipe to derive (fills profile/purpose/etc.; explicit flags still
+    /// override). Omit to specify everything with flags
+    #[arg(value_name = "RECIPE")]
+    pub recipe: Option<String>,
 
-    /// Derivation purpose (lowercase alphanumeric + hyphens, 1-64 chars)
+    /// Key profile (required unless a recipe supplies it)
     #[arg(long)]
-    pub purpose: String,
+    pub profile: Option<ProfileArg>,
+
+    /// Derivation purpose (lowercase alphanumeric + hyphens, 1-64 chars;
+    /// required unless a recipe supplies it)
+    #[arg(long)]
+    pub purpose: Option<String>,
 
     /// KDF pipeline override
     #[arg(long)]
     pub pipeline: Option<PipelineArg>,
 
     /// Key rotation index
-    #[arg(long, default_value_t = 0)]
-    pub index: u32,
+    #[arg(long)]
+    pub index: Option<u32>,
 
     /// Output format override
     #[arg(long)]
@@ -213,21 +243,27 @@ pub struct DeriveArgs {
 
 #[derive(clap::Args)]
 pub struct PubkeyArgs {
-    /// Key profile
-    #[arg(long)]
-    pub profile: ProfileArg,
+    /// Named recipe to show the public key for (fills profile/purpose/etc.;
+    /// explicit flags still override). Omit to specify everything with flags
+    #[arg(value_name = "RECIPE")]
+    pub recipe: Option<String>,
 
-    /// Derivation purpose (lowercase alphanumeric + hyphens, 1-64 chars)
+    /// Key profile (required unless a recipe supplies it)
     #[arg(long)]
-    pub purpose: String,
+    pub profile: Option<ProfileArg>,
+
+    /// Derivation purpose (lowercase alphanumeric + hyphens, 1-64 chars;
+    /// required unless a recipe supplies it)
+    #[arg(long)]
+    pub purpose: Option<String>,
 
     /// KDF pipeline override
     #[arg(long)]
     pub pipeline: Option<PipelineArg>,
 
     /// Key rotation index
-    #[arg(long, default_value_t = 0)]
-    pub index: u32,
+    #[arg(long)]
+    pub index: Option<u32>,
 
     /// Read IKM from file instead of `YubiKey` (testing)
     #[arg(long, value_name = "PATH")]

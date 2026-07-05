@@ -41,6 +41,64 @@ ykdf derive --profile ed25519 --purpose high-value --passphrase
 ykdf pubkey --profile x25519 --purpose wg-home
 ```
 
+## Recipes
+
+A recipe is a named bundle of derivation parameters, so a routine key becomes
+`ykdf derive wg-home` instead of a line of flags. Recipes live in a TOML file at
+`$XDG_CONFIG_HOME/ykdf/config.toml` (or `$HOME/.config/ykdf/config.toml`); override
+the path with `--config <path>` or the `YKDF_CONFIG` variable. The file holds
+labels only, never a PIN, passphrase, or key, so it is safe to keep in a
+dotfiles repository or sync between machines. It never changes what a derivation
+produces: the same recipe and the same YubiKey always yield the same key.
+
+```toml
+# $HOME/.config/ykdf/config.toml
+
+# Applied to every recipe unless the recipe overrides them.
+[defaults]
+index = 0
+
+[recipe.wg-home]
+profile     = "x25519"
+description = "WireGuard home tunnel"
+
+[recipe.git-signing]
+profile  = "ed25519"
+pipeline = "hkdf-sha3-512"
+index    = 2
+
+[recipe.backup]
+profile = "age-x25519"
+purpose = "backup-encryption"
+```
+
+Each recipe needs a `profile`; `purpose`, `pipeline`, `index`, `layered`, and
+`description` are optional. An omitted `purpose` defaults to the recipe name, so
+`[recipe.wg-home]` derives with purpose `wg-home`. Values resolve in the order
+explicit flag, recipe field, `[defaults]`, then the profile's built-in default,
+so a flag always wins.
+
+```bash
+# Derive using a recipe
+ykdf derive wg-home
+
+# Same run, but override the rotation index
+ykdf derive wg-home --index 1
+
+# Public key for a recipe
+ykdf pubkey git-signing
+
+# List the configured recipes
+ykdf recipe list
+
+# Show a recipe's fully resolved parameters before deriving
+ykdf recipe show git-signing
+```
+
+An unknown field in the file is rejected, and each recipe is validated against
+the same rules as the equivalent flags, so `ykdf recipe show` reports a bad
+profile or purpose without touching the YubiKey.
+
 ## Choosing the smartcard transport
 
 On Linux, `--transport auto|pcsc|scdaemon` selects how the PIV factor reaches the
