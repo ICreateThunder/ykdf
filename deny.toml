@@ -37,12 +37,15 @@ allow = [
 multiple-versions = "deny"
 wildcards = "deny"
 deny = []
-# Transitional duplicates from the RustCrypto digest 0.10 -> 0.11 split
-# and yubikey/yubikey-hmac-otp transitive dependencies. ed25519-dalek 2.x
-# still pins digest 0.10 (via sha2 0.10). The der/pkcs8/signature/spki
-# duplicates come from ml-dsa 0.1, which tracks a newer RustCrypto trait
-# generation than p256 0.13 / yubikey. Skipped explicitly so any NEW
-# unexpected duplicate still fails.
+# Transitional duplicates from the RustCrypto digest 0.10 -> 0.11 split. The
+# old-generation copies (sha2 0.10, digest 0.10, rand_core 0.6, der 0.7, pkcs8
+# 0.10, spki 0.7, const-oid 0.9, signature 2.2, hmac 0.12, block-buffer 0.10,
+# crypto-common 0.1, getrandom 0.2) are pinned by yubikey 0.8 via
+# p256/p384/elliptic-curve/ecdsa 0.13, and digest 0.10 additionally by argon2
+# 0.5 (blake2 0.10). The newer der/pkcs8/spki/signature copies come from
+# ml-dsa 0.1. They collapse once yubikey moves to RustCrypto 0.14 (p256 0.14)
+# and argon2 0.6 / blake2 0.11 land stable; all are pre-release today. Skipped
+# explicitly so any NEW unexpected duplicate still fails.
 skip = [
     { crate = "block-buffer" },
     { crate = "const-oid" },
