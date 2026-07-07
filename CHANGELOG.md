@@ -80,6 +80,9 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 
 ### Changed
 
+- Bumped `ed25519-dalek` and `x25519-dalek` to 3.0, which unifies
+  `curve25519-dalek` on 5.0 and removes a duplicate. The derivation is
+  byte-for-byte unchanged: the frozen v1 golden vectors still reproduce exactly.
 - `ykdf init` and `ykdf clone` now auto-detect the PIV management key by default
   (try the factory key, then the PIN-protected stored key, then the PIN-derived
   key), so the common cases no longer need `--mgmt-key`. Warnings print in red on
