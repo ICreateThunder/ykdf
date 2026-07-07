@@ -24,6 +24,12 @@ updates:
       day: monday
       time: "09:00"
       timezone: Europe/London
+    groups:
+      # Bump actions together so multi-part actions (e.g. codeql-action's
+      # init/analyze/upload-sarif, which must share a version) never split
+      # across PRs and land mismatched.
+      actions-minor-patch:
+        update-types: [minor, patch]
     commit-message:
       prefix: "chore(deps-ci)"
     labels:
