@@ -13,7 +13,7 @@ use std::path::Path;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use ykdf_core::{Pipeline, Profile, ProfileOutput, derive, public_key_string};
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroizing;
 
 use crate::cli::{WgCommand, WgConfigArgs, WgDerive, WgPeerArgs};
 use crate::derive::{apply_passphrase, build_context, extract_ikm};
@@ -182,91 +182,33 @@ fn run_config(args: &WgConfigArgs, config: Option<&Path>) -> Result<(), CliError
     let dns = merge_list(&args.dns, wg.map(|w| w.dns.as_slice()));
     let mtu = args.mtu.or_else(|| wg.and_then(|w| w.mtu));
 
-    let mut text = Zeroizing::new(interface_block(
-        private.as_str(),
-        &address,
-        listen_port,
-        &dns,
-        mtu,
-    ));
+    // A CLI --peer-pubkey replaces the recipe's peers wholesale; otherwise use
+    // the recipe's peers.
+    let peers = if let Some(pubkey) = &args.peer_pubkey {
+        vec![ykdf_config::WgPeer {
+            public_key: pubkey.clone(),
+            endpoint: args.endpoint.clone(),
+            allowed_ips: args.allowed_ips.clone(),
+            keepalive: args.keepalive,
+        }]
+    } else {
+        wg.map(|w| w.peers.clone()).unwrap_or_default()
+    };
 
-    // A CLI --peer-pubkey replaces the recipe's peers wholesale; otherwise emit
-    // one [Peer] block per recipe peer.
-    if let Some(pubkey) = &args.peer_pubkey {
-        text.push_str("\n\n");
-        text.push_str(&config_peer_block(
-            pubkey,
-            args.endpoint.as_deref(),
-            &args.allowed_ips,
-            args.keepalive,
-        ));
-    } else if let Some(wg) = wg {
-        for peer in &wg.peers {
-            text.push_str("\n\n");
-            text.push_str(&config_peer_block(
-                &peer.public_key,
-                peer.endpoint.as_deref(),
-                &peer.allowed_ips,
-                peer.keepalive,
-            ));
-        }
-    }
-    text.push('\n');
+    // Render through the shared ykdf-config path so the CLI and the Android app
+    // produce byte-identical configs. render() returns a Zeroizing<String> sized
+    // exactly for the key, so the trailing newline is added at write time rather
+    // than pushed here (which would reallocate the secret buffer).
+    let cfg = ykdf_config::WgConfig {
+        address,
+        listen_port,
+        dns,
+        mtu,
+        peers,
+    };
+    let text = cfg.render(private.as_str());
 
     write_config(args.output.as_deref(), &text)
-}
-
-/// Build the `[Interface]` block. Optional fields are omitted when unset.
-///
-/// One of the intermediate lines holds the base64 private key, so the line
-/// buffers are zeroized after the block is assembled. The joined result carries
-/// the key too and is wrapped in `Zeroizing` by the caller.
-fn interface_block(
-    private_b64: &str,
-    address: &[String],
-    listen_port: Option<u16>,
-    dns: &[String],
-    mtu: Option<u32>,
-) -> String {
-    let mut lines = vec![
-        String::from("[Interface]"),
-        format!("PrivateKey = {private_b64}"),
-        format!("Address = {}", address.join(", ")),
-    ];
-    if let Some(port) = listen_port {
-        lines.push(format!("ListenPort = {port}"));
-    }
-    if !dns.is_empty() {
-        lines.push(format!("DNS = {}", dns.join(", ")));
-    }
-    if let Some(mtu) = mtu {
-        lines.push(format!("MTU = {mtu}"));
-    }
-    let joined = lines.join("\n");
-    for line in &mut lines {
-        line.zeroize();
-    }
-    joined
-}
-
-/// Build a `[Peer]` block for a remote peer (used by `wg config`).
-fn config_peer_block(
-    pubkey: &str,
-    endpoint: Option<&str>,
-    allowed_ips: &[String],
-    keepalive: Option<u16>,
-) -> String {
-    let mut lines = vec![String::from("[Peer]"), format!("PublicKey = {pubkey}")];
-    if let Some(endpoint) = endpoint {
-        lines.push(format!("Endpoint = {endpoint}"));
-    }
-    if !allowed_ips.is_empty() {
-        lines.push(format!("AllowedIPs = {}", allowed_ips.join(", ")));
-    }
-    if let Some(secs) = keepalive {
-        lines.push(format!("PersistentKeepalive = {secs}"));
-    }
-    lines.join("\n")
 }
 
 /// Build a `[Peer]` block describing this device (used by `wg peer`), for the
@@ -283,13 +225,20 @@ fn self_peer_block(pubkey: &str, allowed_ips: &[String], endpoint: Option<&str>)
     lines.join("\n")
 }
 
-/// Write the config to stdout, or to a file created with mode 0600 (the config
-/// carries a private key).
+/// Write the config plus a trailing newline to stdout, or to a file created with
+/// mode 0600 (the config carries a private key).
+///
+/// `content` has no trailing newline (`render` omits it so the key-bearing buffer
+/// stays exactly sized); the newline is written separately here rather than
+/// pushed into that buffer.
 fn write_config(path: Option<&Path>, content: &str) -> Result<(), CliError> {
     match path {
-        None => std::io::stdout()
-            .write_all(content.as_bytes())
-            .map_err(CliError::OutputWrite),
+        None => {
+            let mut out = std::io::stdout();
+            out.write_all(content.as_bytes())
+                .map_err(CliError::OutputWrite)?;
+            out.write_all(b"\n").map_err(CliError::OutputWrite)
+        }
         Some(path) => {
             use std::os::unix::fs::OpenOptionsExt;
             let mut file = std::fs::OpenOptions::new()
@@ -306,6 +255,11 @@ fn write_config(path: Option<&Path>, content: &str) -> Result<(), CliError> {
                 .map_err(|source| CliError::OutputFile {
                     path: path.to_path_buf(),
                     source,
+                })?;
+            file.write_all(b"\n")
+                .map_err(|source| CliError::OutputFile {
+                    path: path.to_path_buf(),
+                    source,
                 })
         }
     }
@@ -313,9 +267,7 @@ fn write_config(path: Option<&Path>, content: &str) -> Result<(), CliError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        config_peer_block, interface_block, merge_list, private_key, public_key, self_peer_block,
-    };
+    use super::{merge_list, private_key, public_key, self_peer_block};
     use ykdf_core::{Context, Ikm, Profile, derive, extract};
 
     fn strings(items: &[&str]) -> Vec<String> {
@@ -332,59 +284,6 @@ mod tests {
         assert_eq!(merge_list(&[], Some(&recipe)), recipe);
         // Neither is empty.
         assert!(merge_list(&[], None).is_empty());
-    }
-
-    #[test]
-    fn interface_minimal_omits_optional_lines() {
-        let block = interface_block("KEY", &strings(&["10.0.0.2/24"]), None, &[], None);
-        assert_eq!(
-            block,
-            "[Interface]\nPrivateKey = KEY\nAddress = 10.0.0.2/24"
-        );
-    }
-
-    #[test]
-    fn interface_full_joins_repeatable_fields() {
-        let block = interface_block(
-            "KEY",
-            &strings(&["10.0.0.2/24", "fd00::2/64"]),
-            Some(51820),
-            &strings(&["1.1.1.1", "1.0.0.1"]),
-            Some(1420),
-        );
-        assert_eq!(
-            block,
-            "[Interface]\n\
-             PrivateKey = KEY\n\
-             Address = 10.0.0.2/24, fd00::2/64\n\
-             ListenPort = 51820\n\
-             DNS = 1.1.1.1, 1.0.0.1\n\
-             MTU = 1420"
-        );
-    }
-
-    #[test]
-    fn config_peer_minimal_is_pubkey_only() {
-        let block = config_peer_block("PUB", None, &[], None);
-        assert_eq!(block, "[Peer]\nPublicKey = PUB");
-    }
-
-    #[test]
-    fn config_peer_full_orders_fields() {
-        let block = config_peer_block(
-            "PUB",
-            Some("vpn.example.com:51820"),
-            &strings(&["0.0.0.0/0", "::/0"]),
-            Some(25),
-        );
-        assert_eq!(
-            block,
-            "[Peer]\n\
-             PublicKey = PUB\n\
-             Endpoint = vpn.example.com:51820\n\
-             AllowedIPs = 0.0.0.0/0, ::/0\n\
-             PersistentKeepalive = 25"
-        );
     }
 
     #[test]

@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use ykdf_core::{Context, Pipeline, Profile};
+use zeroize::Zeroizing;
 
 /// A parsed recipe catalogue: optional shared defaults plus named recipes.
 #[derive(Debug, Default, Deserialize)]
@@ -124,6 +125,82 @@ pub struct WgPeer {
     pub allowed_ips: Vec<String>,
     /// `PersistentKeepalive` interval, in seconds.
     pub keepalive: Option<u16>,
+}
+
+impl WgConfig {
+    /// Render a `wg-quick` config: an `[Interface]` block (with the given base64
+    /// private key) followed by one `[Peer]` block per peer. Optional fields are
+    /// omitted when unset; repeatable fields are comma-joined. The result has no
+    /// trailing newline, so the caller adds one when writing a file.
+    ///
+    /// This is the single source of the config text shared by the `ykdf wg
+    /// config` CLI and the Android JNI bridge, so both produce byte-identical
+    /// output.
+    ///
+    /// The result is `Zeroizing` because it contains the private key, and the
+    /// secret buffer is sized exactly (via a first pass with a same-length
+    /// non-secret placeholder) so it is allocated once and never reallocates.
+    /// A reallocation while the key was already in the buffer would copy it into
+    /// a fresh allocation and free the old one without zeroizing it, escaping the
+    /// `Zeroizing` wrapper; sizing up front avoids that.
+    #[must_use]
+    pub fn render(&self, private_key_b64: &str) -> Zeroizing<String> {
+        let placeholder = "X".repeat(private_key_b64.len());
+        let mut sizing = String::new();
+        self.write_into(&mut sizing, &placeholder);
+
+        let mut out = Zeroizing::new(String::with_capacity(sizing.len()));
+        self.write_into(&mut out, private_key_b64);
+        out
+    }
+
+    /// Append the config text to `out` (no trailing newline). Called once with a
+    /// placeholder to size the buffer, then once with the real key.
+    fn write_into(&self, out: &mut String, private_key_b64: &str) {
+        out.push_str("[Interface]\nPrivateKey = ");
+        out.push_str(private_key_b64);
+        push_field(out, "Address", &self.address);
+        if let Some(port) = self.listen_port {
+            out.push_str("\nListenPort = ");
+            out.push_str(&port.to_string());
+        }
+        push_field(out, "DNS", &self.dns);
+        if let Some(mtu) = self.mtu {
+            out.push_str("\nMTU = ");
+            out.push_str(&mtu.to_string());
+        }
+        for peer in &self.peers {
+            out.push_str("\n\n");
+            peer.append_block(out);
+        }
+    }
+}
+
+impl WgPeer {
+    /// Append this peer's `[Peer]` block to `out`.
+    fn append_block(&self, out: &mut String) {
+        out.push_str("[Peer]\nPublicKey = ");
+        out.push_str(&self.public_key);
+        if let Some(endpoint) = &self.endpoint {
+            out.push_str("\nEndpoint = ");
+            out.push_str(endpoint);
+        }
+        push_field(out, "AllowedIPs", &self.allowed_ips);
+        if let Some(secs) = self.keepalive {
+            out.push_str("\nPersistentKeepalive = ");
+            out.push_str(&secs.to_string());
+        }
+    }
+}
+
+/// Append `\n<key> = a, b, c` to `out`, or nothing when `values` is empty.
+fn push_field(out: &mut String, key: &str, values: &[String]) {
+    if !values.is_empty() {
+        out.push('\n');
+        out.push_str(key);
+        out.push_str(" = ");
+        out.push_str(&values.join(", "));
+    }
 }
 
 impl Catalogue {
@@ -675,6 +752,83 @@ mod tests {
             cat.resolve("home"),
             Err(ConfigError::WgPeerInvalid { .. })
         ));
+    }
+
+    #[test]
+    fn render_minimal_is_interface_only() {
+        let cat = Catalogue::parse(
+            "[recipe.home]\nprofile = \"x25519\"\n[recipe.home.wg]\naddress = [\"10.0.0.2/24\"]\n",
+            None,
+        )
+        .unwrap();
+        let wg = cat.resolve("home").unwrap().wg.unwrap();
+        assert_eq!(
+            wg.render("PRIV").as_str(),
+            "[Interface]\nPrivateKey = PRIV\nAddress = 10.0.0.2/24"
+        );
+    }
+
+    #[test]
+    fn render_full_with_peer() {
+        let cat = Catalogue::parse(
+            r#"
+            [recipe.home]
+            profile = "x25519"
+            [recipe.home.wg]
+            address     = ["10.0.0.2/24", "fd00::2/64"]
+            listen-port = 51820
+            dns         = ["1.1.1.1"]
+            mtu         = 1420
+            [[recipe.home.wg.peer]]
+            public-key  = "PUB"
+            endpoint    = "vpn.example.com:51820"
+            allowed-ips = ["0.0.0.0/0", "::/0"]
+            keepalive   = 25
+            "#,
+            None,
+        )
+        .unwrap();
+        let wg = cat.resolve("home").unwrap().wg.unwrap();
+        assert_eq!(
+            wg.render("PRIV").as_str(),
+            "[Interface]\n\
+             PrivateKey = PRIV\n\
+             Address = 10.0.0.2/24, fd00::2/64\n\
+             ListenPort = 51820\n\
+             DNS = 1.1.1.1\n\
+             MTU = 1420\n\
+             \n\
+             [Peer]\n\
+             PublicKey = PUB\n\
+             Endpoint = vpn.example.com:51820\n\
+             AllowedIPs = 0.0.0.0/0, ::/0\n\
+             PersistentKeepalive = 25"
+        );
+    }
+
+    #[test]
+    fn render_emits_one_block_per_peer() {
+        let cat = Catalogue::parse(
+            r#"
+            [recipe.home]
+            profile = "x25519"
+            [recipe.home.wg]
+            address = ["10.0.0.2/24"]
+            [[recipe.home.wg.peer]]
+            public-key  = "A"
+            allowed-ips = ["10.0.0.1/32"]
+            [[recipe.home.wg.peer]]
+            public-key  = "B"
+            allowed-ips = ["10.0.0.3/32"]
+            "#,
+            None,
+        )
+        .unwrap();
+        let wg = cat.resolve("home").unwrap().wg.unwrap();
+        let rendered = wg.render("PRIV");
+        assert_eq!(rendered.matches("[Peer]").count(), 2);
+        assert!(rendered.contains("PublicKey = A"));
+        assert!(rendered.contains("PublicKey = B"));
     }
 
     #[test]
