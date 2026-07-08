@@ -15,3 +15,6 @@ workspace = true
 ykdf-core = { path = "../ykdf-core", version = "0.2.0" }
 serde = { version = "1", features = ["derive"] }
 toml = "1.1"
+# render() returns Zeroizing<String> so the private key in a rendered config is
+# wiped on drop; the type also forces every caller (CLI, JNI) to keep it wrapped.
+zeroize.workspace = true

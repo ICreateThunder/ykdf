@@ -196,7 +196,9 @@ fn run_config(args: &WgConfigArgs, config: Option<&Path>) -> Result<(), CliError
     };
 
     // Render through the shared ykdf-config path so the CLI and the Android app
-    // produce byte-identical configs. Zeroizing wraps the key-bearing result.
+    // produce byte-identical configs. render() returns a Zeroizing<String> sized
+    // exactly for the key, so the trailing newline is added at write time rather
+    // than pushed here (which would reallocate the secret buffer).
     let cfg = ykdf_config::WgConfig {
         address,
         listen_port,
@@ -204,8 +206,7 @@ fn run_config(args: &WgConfigArgs, config: Option<&Path>) -> Result<(), CliError
         mtu,
         peers,
     };
-    let mut text = Zeroizing::new(cfg.render(private.as_str()));
-    text.push('\n');
+    let text = cfg.render(private.as_str());
 
     write_config(args.output.as_deref(), &text)
 }
@@ -224,13 +225,20 @@ fn self_peer_block(pubkey: &str, allowed_ips: &[String], endpoint: Option<&str>)
     lines.join("\n")
 }
 
-/// Write the config to stdout, or to a file created with mode 0600 (the config
-/// carries a private key).
+/// Write the config plus a trailing newline to stdout, or to a file created with
+/// mode 0600 (the config carries a private key).
+///
+/// `content` has no trailing newline (`render` omits it so the key-bearing buffer
+/// stays exactly sized); the newline is written separately here rather than
+/// pushed into that buffer.
 fn write_config(path: Option<&Path>, content: &str) -> Result<(), CliError> {
     match path {
-        None => std::io::stdout()
-            .write_all(content.as_bytes())
-            .map_err(CliError::OutputWrite),
+        None => {
+            let mut out = std::io::stdout();
+            out.write_all(content.as_bytes())
+                .map_err(CliError::OutputWrite)?;
+            out.write_all(b"\n").map_err(CliError::OutputWrite)
+        }
         Some(path) => {
             use std::os::unix::fs::OpenOptionsExt;
             let mut file = std::fs::OpenOptions::new()
@@ -244,6 +252,11 @@ fn write_config(path: Option<&Path>, content: &str) -> Result<(), CliError> {
                     source,
                 })?;
             file.write_all(content.as_bytes())
+                .map_err(|source| CliError::OutputFile {
+                    path: path.to_path_buf(),
+                    source,
+                })?;
+            file.write_all(b"\n")
                 .map_err(|source| CliError::OutputFile {
                     path: path.to_path_buf(),
                     source,

@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use ykdf_core::{Context, Pipeline, Profile};
+use zeroize::Zeroizing;
 
 /// A parsed recipe catalogue: optional shared defaults plus named recipes.
 #[derive(Debug, Default, Deserialize)]
@@ -134,28 +135,44 @@ impl WgConfig {
     ///
     /// This is the single source of the config text shared by the `ykdf wg
     /// config` CLI and the Android JNI bridge, so both produce byte-identical
-    /// output. It is built by pushing directly into one buffer: the private key
-    /// is copied only into the returned `String` (which the caller wraps in
-    /// `Zeroizing`), never into a separate intermediate allocation.
+    /// output.
+    ///
+    /// The result is `Zeroizing` because it contains the private key, and the
+    /// secret buffer is sized exactly (via a first pass with a same-length
+    /// non-secret placeholder) so it is allocated once and never reallocates.
+    /// A reallocation while the key was already in the buffer would copy it into
+    /// a fresh allocation and free the old one without zeroizing it, escaping the
+    /// `Zeroizing` wrapper; sizing up front avoids that.
     #[must_use]
-    pub fn render(&self, private_key_b64: &str) -> String {
-        let mut out = String::from("[Interface]\nPrivateKey = ");
+    pub fn render(&self, private_key_b64: &str) -> Zeroizing<String> {
+        let placeholder = "X".repeat(private_key_b64.len());
+        let mut sizing = String::new();
+        self.write_into(&mut sizing, &placeholder);
+
+        let mut out = Zeroizing::new(String::with_capacity(sizing.len()));
+        self.write_into(&mut out, private_key_b64);
+        out
+    }
+
+    /// Append the config text to `out` (no trailing newline). Called once with a
+    /// placeholder to size the buffer, then once with the real key.
+    fn write_into(&self, out: &mut String, private_key_b64: &str) {
+        out.push_str("[Interface]\nPrivateKey = ");
         out.push_str(private_key_b64);
-        push_field(&mut out, "Address", &self.address);
+        push_field(out, "Address", &self.address);
         if let Some(port) = self.listen_port {
             out.push_str("\nListenPort = ");
             out.push_str(&port.to_string());
         }
-        push_field(&mut out, "DNS", &self.dns);
+        push_field(out, "DNS", &self.dns);
         if let Some(mtu) = self.mtu {
             out.push_str("\nMTU = ");
             out.push_str(&mtu.to_string());
         }
         for peer in &self.peers {
             out.push_str("\n\n");
-            peer.append_block(&mut out);
+            peer.append_block(out);
         }
-        out
     }
 }
 
@@ -746,7 +763,7 @@ mod tests {
         .unwrap();
         let wg = cat.resolve("home").unwrap().wg.unwrap();
         assert_eq!(
-            wg.render("PRIV"),
+            wg.render("PRIV").as_str(),
             "[Interface]\nPrivateKey = PRIV\nAddress = 10.0.0.2/24"
         );
     }
@@ -773,7 +790,7 @@ mod tests {
         .unwrap();
         let wg = cat.resolve("home").unwrap().wg.unwrap();
         assert_eq!(
-            wg.render("PRIV"),
+            wg.render("PRIV").as_str(),
             "[Interface]\n\
              PrivateKey = PRIV\n\
              Address = 10.0.0.2/24, fd00::2/64\n\
