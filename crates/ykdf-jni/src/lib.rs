@@ -12,7 +12,10 @@
 //!   converts the Java arguments, calls [`derive_secret`], wipes the input copy
 //!   it pulled across the boundary, and returns a `byte[]` (or throws).
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use ykdf_core::{Context, Ikm, Pipeline, Profile, ProfileOutput, derive, extract};
+use zeroize::Zeroizing;
 
 /// Run a YKDF derivation from raw input key material.
 ///
@@ -59,6 +62,31 @@ pub fn public_key(
     let (profile_enum, output) = derive_output(ikm, pipeline, profile, purpose, index)?;
     ykdf_core::public_key_string(&output, profile_enum)
         .ok_or_else(|| format!("the {profile} profile has no public key"))
+}
+
+/// Derive an x25519 `WireGuard` key and render a full `wg-quick` config from it
+/// plus the supplied non-secret network fields. The config is byte-identical to
+/// `ykdf wg config` because both call [`ykdf_config::WgConfig::render`].
+///
+/// The result is `Zeroizing` because it embeds the base64 private key.
+///
+/// # Errors
+///
+/// Returns a human-readable message if the IKM is too short or derivation fails.
+pub fn wg_config(
+    ikm: &[u8],
+    purpose: &str,
+    index: u32,
+    wg: &ykdf_config::WgConfig,
+) -> Result<Zeroizing<String>, String> {
+    // WireGuard keys are x25519; the empty pipeline selects the profile default.
+    let (_profile, output) = derive_output(ikm, "", "x25519", purpose, index)?;
+    let private_b64 = match &output {
+        ProfileOutput::SecretKey(k) => Zeroizing::new(BASE64.encode(k.0)),
+        // x25519 always yields a SecretKey; this arm cannot occur.
+        _ => return Err("x25519 did not yield a secret key".to_owned()),
+    };
+    Ok(wg.render(&private_b64))
 }
 
 /// Resolve the context and run the derivation, returning the resolved profile
@@ -206,6 +234,53 @@ pub extern "system" fn Java_app_ykdf_Native_profiles<'local>(
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// JNI entry point for `app.ykdf.Native.wgConfig(...)`.
+///
+/// Derives the x25519 key and returns a full `wg-quick` config as a Java
+/// `String`, byte-identical to `ykdf wg config`. Optional numeric fields use a
+/// negative value to mean "omitted"; an empty peer public key means "no peer".
+/// The returned config embeds the private key, so the caller treats it as
+/// sensitive. A validation failure throws `IllegalArgumentException`; a panic or
+/// unexpected error becomes a `RuntimeException`.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub extern "system" fn Java_app_ykdf_Native_wgConfig<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    ikm: JByteArray<'local>,
+    purpose: JString<'local>,
+    index: jint,
+    address: JObjectArray<'local, JString<'local>>,
+    listen_port: jint,
+    dns: JObjectArray<'local, JString<'local>>,
+    mtu: jint,
+    peer_public_key: JString<'local>,
+    endpoint: JString<'local>,
+    allowed_ips: JObjectArray<'local, JString<'local>>,
+    keepalive: jint,
+) -> JString<'local> {
+    env.with_env(|env| -> jni::errors::Result<JString> {
+        match run_wg_config(
+            env,
+            &ikm,
+            &purpose,
+            index,
+            &address,
+            listen_port,
+            &dns,
+            mtu,
+            &peer_public_key,
+            &endpoint,
+            &allowed_ips,
+            keepalive,
+        ) {
+            Ok(config) => Ok(env.new_string(config.as_str())?),
+            Err(msg) => Err(throw_illegal_arg(env, msg)),
+        }
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
 /// Throw a Java `IllegalArgumentException` carrying `msg`, returning the
 /// resulting `Error::JavaException`. Returning this error (rather than leaving
 /// the policy to throw) makes `ThrowRuntimeExAndDefault` observe the pending
@@ -271,9 +346,100 @@ fn run_public(
     result
 }
 
+#[allow(clippy::too_many_arguments)]
+fn run_wg_config(
+    env: &mut Env<'_>,
+    ikm: &JByteArray<'_>,
+    purpose: &JString<'_>,
+    index: jint,
+    address: &JObjectArray<'_, JString<'_>>,
+    listen_port: jint,
+    dns: &JObjectArray<'_, JString<'_>>,
+    mtu: jint,
+    peer_public_key: &JString<'_>,
+    endpoint: &JString<'_>,
+    allowed_ips: &JObjectArray<'_, JString<'_>>,
+    keepalive: jint,
+) -> Result<Zeroizing<String>, String> {
+    let mut ikm_bytes = env.convert_byte_array(ikm).map_err(|e| e.to_string())?;
+    let purpose = jstring(env, purpose)?;
+    let index = u32::try_from(index).map_err(|_| "index must be non-negative".to_owned())?;
+    let address = jstring_array(env, address)?;
+    let dns = jstring_array(env, dns)?;
+    let allowed_ips = jstring_array(env, allowed_ips)?;
+    let peer_public_key = jstring(env, peer_public_key)?;
+    let endpoint = jstring(env, endpoint)?;
+
+    // A single optional peer, present when a public key was supplied.
+    let peers = if peer_public_key.trim().is_empty() {
+        Vec::new()
+    } else {
+        vec![ykdf_config::WgPeer {
+            public_key: peer_public_key,
+            endpoint: optional_string(endpoint),
+            allowed_ips,
+            keepalive: optional_u16(keepalive),
+        }]
+    };
+    let wg = ykdf_config::WgConfig {
+        address,
+        listen_port: optional_u16(listen_port),
+        dns,
+        mtu: optional_u32(mtu),
+        peers,
+    };
+
+    let result = wg_config(&ikm_bytes, &purpose, index, &wg);
+    ikm_bytes.zeroize();
+    result
+}
+
+/// Convert a Java `String[]` to a `Vec<String>`.
+fn jstring_array(
+    env: &mut Env<'_>,
+    array: &JObjectArray<'_, JString<'_>>,
+) -> Result<Vec<String>, String> {
+    let len = array.len(env).map_err(|e| e.to_string())?;
+    let mut out = Vec::with_capacity(len);
+    for i in 0..len {
+        let element = array.get_element(env, i).map_err(|e| e.to_string())?;
+        out.push(jstring(env, &element)?);
+    }
+    Ok(out)
+}
+
+/// A negative `jint` means the optional field was omitted; otherwise clamp into
+/// range (`WireGuard` ports and keepalive are `u16`).
+fn optional_u16(value: jint) -> Option<u16> {
+    if value < 0 {
+        None
+    } else {
+        u16::try_from(value).ok()
+    }
+}
+
+fn optional_u32(value: jint) -> Option<u32> {
+    if value < 0 {
+        None
+    } else {
+        u32::try_from(value).ok()
+    }
+}
+
+/// An empty (or whitespace-only) Java string means the optional field was omitted.
+fn optional_string(value: String) -> Option<String> {
+    if value.trim().is_empty() {
+        None
+    } else {
+        Some(value)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{derive_secret, public_key};
+    use base64::Engine as _;
+
+    use super::{derive_secret, public_key, wg_config};
 
     /// Pinned to the frozen golden vector `symmetric/hkdf-sha512` in
     /// `vectors/v1.json` (ikm 00..1f, purpose "test", index 0). Proves the JNI
@@ -335,6 +501,52 @@ mod tests {
     fn public_key_rejects_symmetric() {
         let ikm: Vec<u8> = (0u8..32).collect();
         assert!(public_key(&ikm, "", "symmetric", "test", 0).is_err());
+    }
+
+    fn sample_wg() -> ykdf_config::WgConfig {
+        ykdf_config::WgConfig {
+            address: vec!["10.0.0.2/24".to_owned()],
+            listen_port: Some(51820),
+            dns: vec!["1.1.1.1".to_owned()],
+            mtu: None,
+            peers: vec![ykdf_config::WgPeer {
+                public_key: "PUB".to_owned(),
+                endpoint: Some("vpn:51820".to_owned()),
+                allowed_ips: vec!["0.0.0.0/0".to_owned()],
+                keepalive: Some(25),
+            }],
+        }
+    }
+
+    #[test]
+    fn wg_config_renders_interface_and_peer() {
+        let ikm: Vec<u8> = (0u8..32).collect();
+        let cfg = wg_config(&ikm, "wg-home", 0, &sample_wg()).unwrap();
+        assert!(cfg.starts_with("[Interface]\nPrivateKey = "));
+        assert!(cfg.contains("\nAddress = 10.0.0.2/24"));
+        assert!(cfg.contains("\nListenPort = 51820"));
+        assert!(cfg.contains("[Peer]\nPublicKey = PUB"));
+        assert!(cfg.contains("\nPersistentKeepalive = 25"));
+    }
+
+    #[test]
+    fn wg_config_private_key_is_base64_of_the_x25519_secret() {
+        // The PrivateKey line must be base64 of the same 32 secret bytes the raw
+        // derive returns, so the app's config uses the exact CLI key.
+        let ikm: Vec<u8> = (0u8..32).collect();
+        let secret = derive_secret(&ikm, "", "x25519", "wg-home", 0).unwrap();
+        let expected = super::BASE64.encode(&secret);
+        let cfg = wg_config(&ikm, "wg-home", 0, &sample_wg()).unwrap();
+        assert!(cfg.contains(&format!("PrivateKey = {expected}")));
+        assert_eq!(expected.len(), 44);
+    }
+
+    #[test]
+    fn wg_config_is_deterministic() {
+        let ikm: Vec<u8> = (0u8..32).collect();
+        let a = wg_config(&ikm, "wg-home", 0, &sample_wg()).unwrap();
+        let b = wg_config(&ikm, "wg-home", 0, &sample_wg()).unwrap();
+        assert_eq!(a.as_str(), b.as_str());
     }
 
     #[test]

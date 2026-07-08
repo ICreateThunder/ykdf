@@ -9,6 +9,15 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 
 ### Added
 
+- Android app: WireGuard mode. The app now has two modes (a segmented Derive /
+  WireGuard control): Derive is the existing any-profile flow, and WireGuard
+  renders a full `wg-quick` config from an x25519 key. The config comes from a
+  new `Native.wgConfig` JNI method that calls the shared `ykdf_config::WgConfig`
+  render, so it is byte-identical to `ykdf wg config`. It can be copied, shared,
+  saved to a `client.conf` for import, or shown as a QR code for the WireGuard
+  Android app to scan. The config and its QR hold a private key, so both stay
+  masked until revealed.
+
 - `ykdf wg`: derive WireGuard keys and assemble configs. `wg key` and `wg pubkey`
   print the base64 private and public keys; `wg peer` prints a `[Peer]` stanza
   for this device to paste into the other end's config; `wg config` assembles an
