@@ -7,6 +7,7 @@ mod ikm;
 mod init;
 mod recipe;
 mod term;
+mod wg;
 
 use clap::Parser;
 use cli::{Cli, Commands};
@@ -28,5 +29,6 @@ fn run(cli: Cli) -> Result<(), CliError> {
         Commands::Init(args) => init::run_init(args),
         Commands::Clone(args) => clone::run_clone(&args),
         Commands::Recipe(args) => recipe::run_recipe(args.command, config),
+        Commands::Wg(args) => wg::run_wg(args.command, config),
     }
 }

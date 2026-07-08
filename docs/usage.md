@@ -99,6 +99,45 @@ An unknown field in the file is rejected, and each recipe is validated against
 the same rules as the equivalent flags, so `ykdf recipe show` reports a bad
 profile or purpose without touching the YubiKey.
 
+## WireGuard
+
+WireGuard keys are Curve25519 in base64, which is the `x25519` profile. `ykdf wg`
+derives that key and prints it the way WireGuard expects, so you never handle a
+raw scalar or pipe keys between tools. Every subcommand takes the same derivation
+flags as `ykdf derive` (`--purpose`, `--index`, `--pipeline`, `--layered`,
+`--passphrase`, `--transport`) and an optional recipe name; the profile is fixed
+to `x25519`, so there is no `--profile`.
+
+```bash
+# Private key (base64), for PrivateKey = in a config or `wg set`
+ykdf wg key --purpose vpn-laptop
+
+# Public key (base64), to hand to the other end
+ykdf wg pubkey --purpose vpn-laptop
+
+# A [Peer] stanza describing this device, to paste into the server's config
+ykdf wg peer --purpose vpn-laptop --allowed-ips 10.0.0.2/32 --endpoint laptop.example:51820
+
+# A full interface config, optionally with one peer
+ykdf wg config --purpose vpn-laptop \
+  --address 10.0.0.2/24 --dns 1.1.1.1 --listen-port 51820 \
+  --peer-pubkey <server-pubkey> --endpoint vpn.example.com:51820 \
+  --allowed-ips 0.0.0.0/0 --allowed-ips ::/0 --keepalive 25
+```
+
+`wg config` writes to stdout by default; `-o <path>` writes the file with mode
+0600, since it holds the private key. `--address` is required, and the `[Peer]`
+block appears only when `--peer-pubkey` is given (the other peer flags require
+it). Repeatable flags (`--address`, `--dns`, `--allowed-ips`) are joined with
+commas in the order given.
+
+A recipe supplies the derivation parameters exactly as it does for `derive`, so
+`ykdf wg config home --address 10.0.0.2/24` reuses the `home` recipe's purpose
+and index. The recipe's profile must be `x25519`; naming an `ed25519` or
+`age-x25519` recipe is refused rather than deriving a key WireGuard cannot use.
+Network fields stay on the command line for now; a later `[recipe.<name>.wg]`
+section will let a recipe carry them too.
+
 ## Choosing the smartcard transport
 
 On Linux, `--transport auto|pcsc|scdaemon` selects how the PIV factor reaches the

@@ -35,6 +35,10 @@ ykdf derive --profile x25519 --purpose wg-home
 
 # Show the matching public key.
 ykdf pubkey --profile x25519 --purpose wg-home
+
+# Or assemble a ready-to-use WireGuard config (the key stays derived, never stored).
+ykdf wg config --purpose wg-home --address 10.0.0.2/24 \
+  --peer-pubkey <server-pubkey> --endpoint vpn.example.com:51820 --allowed-ips 0.0.0.0/0
 ```
 
 More commands in [docs/usage.md](docs/usage.md); YubiKey setup, Linux permissions,

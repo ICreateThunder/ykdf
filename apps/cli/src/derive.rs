@@ -158,7 +158,7 @@ pub fn run_pubkey(args: PubkeyArgs, config: Option<&Path>) -> Result<(), CliErro
         .map_err(CliError::OutputWrite)
 }
 
-fn build_context(
+pub(crate) fn build_context(
     profile: Profile,
     pipeline: Pipeline,
     purpose: &str,
@@ -167,7 +167,7 @@ fn build_context(
     Context::with_pipeline(profile, pipeline, purpose, index).map_err(CliError::Core)
 }
 
-fn extract_ikm(
+pub(crate) fn extract_ikm(
     ikm_file: Option<&std::path::PathBuf>,
     layered: bool,
     transport: Option<ykdf_yubikey::Transport>,
@@ -181,7 +181,7 @@ fn extract_ikm(
     extract(&ikm, pipeline).map_err(CliError::Core)
 }
 
-fn apply_passphrase(
+pub(crate) fn apply_passphrase(
     master_key: &ykdf_core::MasterKey,
     pipeline: Pipeline,
 ) -> Result<ykdf_core::MasterKey, CliError> {

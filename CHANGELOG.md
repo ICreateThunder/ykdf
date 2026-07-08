@@ -9,6 +9,16 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 
 ### Added
 
+- `ykdf wg`: derive WireGuard keys and assemble configs. `wg key` and `wg pubkey`
+  print the base64 private and public keys; `wg peer` prints a `[Peer]` stanza
+  for this device to paste into the other end's config; `wg config` assembles an
+  `[Interface]` (with an optional `[Peer]`) from the derived key plus network
+  fields passed as flags (`--address`, `--listen-port`, `--dns`, `--mtu`,
+  `--peer-pubkey`, `--endpoint`, `--allowed-ips`, `--keepalive`). The profile is
+  fixed to x25519, the WireGuard key type, so `wg pubkey` matches
+  `pubkey --profile x25519` byte for byte; a recipe name fills the derivation
+  parameters and must resolve to x25519. `wg config -o <path>` writes the file
+  with mode 0600 because it holds the private key.
 - Recipes: a named catalogue of derivation parameters in a TOML file
   (`$XDG_CONFIG_HOME/ykdf/config.toml`, overridable with `--config` or
   `YKDF_CONFIG`), so a routine key is `ykdf derive wg-home` rather than a line of

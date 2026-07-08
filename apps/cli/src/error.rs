@@ -49,6 +49,13 @@ pub enum CliError {
     MultipleStdinSecrets,
     /// `clone` reserves stdin for device prompts, so secret files cannot use `-`.
     CloneStdinUnsupported { flag: &'static str },
+    /// `wg` needs an x25519 key, but the named recipe derives another profile.
+    WgProfileMismatch { profile: &'static str },
+    /// Failed to write the wg config to a `--output` path.
+    OutputFile {
+        path: PathBuf,
+        source: std::io::Error,
+    },
 }
 
 impl CliError {
@@ -64,6 +71,7 @@ impl CliError {
             | Self::MultipleStdinSecrets
             | Self::MissingProfile
             | Self::MissingPurpose
+            | Self::WgProfileMismatch { .. }
             | Self::CloneStdinUnsupported { .. } => 2,
             _ => 1,
         }
@@ -135,6 +143,14 @@ impl std::fmt::Display for CliError {
                 "clone reads the per-device prompts from stdin, so {flag} cannot \
                  use `-` (stdin); pass a real file path"
             ),
+            Self::WgProfileMismatch { profile } => write!(
+                f,
+                "wg needs an x25519 key, but this recipe derives {profile}; \
+                 use an x25519 recipe or drop the recipe and pass flags"
+            ),
+            Self::OutputFile { path, source } => {
+                write!(f, "failed to write config to {}: {source}", path.display())
+            }
         }
     }
 }
