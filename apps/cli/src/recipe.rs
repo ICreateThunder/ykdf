@@ -46,8 +46,40 @@ fn show(catalogue: &Catalogue, name: &str) -> Result<(), CliError> {
     println!("pipeline  {}", pipeline.as_str());
     println!("index     {}", recipe.index);
     println!("layered   {}", recipe.layered);
-    if let Some(description) = recipe.description {
+    if let Some(description) = &recipe.description {
         println!("about     {description}");
     }
+    if let Some(wg) = &recipe.wg {
+        show_wg(wg);
+    }
     Ok(())
+}
+
+/// Print the resolved `[wg]` extension, so a user can audit the `WireGuard`
+/// config a recipe would assemble before deriving.
+fn show_wg(wg: &ykdf_config::WgConfig) {
+    if !wg.address.is_empty() {
+        println!("wg.address      {}", wg.address.join(", "));
+    }
+    if let Some(port) = wg.listen_port {
+        println!("wg.listen-port  {port}");
+    }
+    if !wg.dns.is_empty() {
+        println!("wg.dns          {}", wg.dns.join(", "));
+    }
+    if let Some(mtu) = wg.mtu {
+        println!("wg.mtu          {mtu}");
+    }
+    for (i, peer) in wg.peers.iter().enumerate() {
+        println!("wg.peer[{i}].public-key   {}", peer.public_key);
+        if let Some(endpoint) = &peer.endpoint {
+            println!("wg.peer[{i}].endpoint     {endpoint}");
+        }
+        if !peer.allowed_ips.is_empty() {
+            println!("wg.peer[{i}].allowed-ips  {}", peer.allowed_ips.join(", "));
+        }
+        if let Some(keepalive) = peer.keepalive {
+            println!("wg.peer[{i}].keepalive    {keepalive}");
+        }
+    }
 }

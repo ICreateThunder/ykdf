@@ -51,6 +51,10 @@ pub enum CliError {
     CloneStdinUnsupported { flag: &'static str },
     /// `wg` needs an x25519 key, but the named recipe derives another profile.
     WgProfileMismatch { profile: &'static str },
+    /// `wg config` has no interface address from a flag or the recipe's `[wg]`.
+    WgMissingAddress,
+    /// `wg peer` has no allowed-ips from a flag or the recipe's `[wg].address`.
+    WgMissingAllowedIps,
     /// Failed to write the wg config to a `--output` path.
     OutputFile {
         path: PathBuf,
@@ -72,6 +76,8 @@ impl CliError {
             | Self::MissingProfile
             | Self::MissingPurpose
             | Self::WgProfileMismatch { .. }
+            | Self::WgMissingAddress
+            | Self::WgMissingAllowedIps
             | Self::CloneStdinUnsupported { .. } => 2,
             _ => 1,
         }
@@ -147,6 +153,16 @@ impl std::fmt::Display for CliError {
                 f,
                 "wg needs an x25519 key, but this recipe derives {profile}; \
                  use an x25519 recipe or drop the recipe and pass flags"
+            ),
+            Self::WgMissingAddress => write!(
+                f,
+                "wg config needs an interface address: pass --address, or name a \
+                 recipe whose [wg] section sets one"
+            ),
+            Self::WgMissingAllowedIps => write!(
+                f,
+                "wg peer needs allowed-ips: pass --allowed-ips, or name a recipe \
+                 whose [wg] section sets an address"
             ),
             Self::OutputFile { path, source } => {
                 write!(f, "failed to write config to {}: {source}", path.display())

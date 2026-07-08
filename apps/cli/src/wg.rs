@@ -19,13 +19,15 @@ use crate::cli::{WgCommand, WgConfigArgs, WgDerive, WgPeerArgs};
 use crate::derive::{apply_passphrase, build_context, extract_ikm};
 use crate::error::CliError;
 
-/// Derivation parameters after merging a recipe (if any) with explicit flags.
+/// A resolved recipe for `wg`: the derivation parameters after merging a recipe
+/// (if any) with explicit flags, plus the recipe's `[wg]` extension when present.
 /// The profile is always x25519, so it is not stored here.
 struct WgParams {
     pipeline: Pipeline,
     purpose: String,
     index: u32,
     layered: bool,
+    wg: Option<ykdf_config::WgConfig>,
 }
 
 pub fn run_wg(command: WgCommand, config: Option<&Path>) -> Result<(), CliError> {
@@ -72,18 +74,19 @@ fn resolve_wg_params(d: &WgDerive, config: Option<&Path>) -> Result<WgParams, Cl
         .or_else(|| recipe.as_ref().map(|r| r.index))
         .unwrap_or(0);
     let layered = d.layered || recipe.as_ref().is_some_and(|r| r.layered);
+    let wg = recipe.and_then(|r| r.wg);
 
     Ok(WgParams {
         pipeline,
         purpose,
         index,
         layered,
+        wg,
     })
 }
 
-/// Derive the x25519 keypair for the given derivation arguments.
-fn derive_keypair(d: &WgDerive, config: Option<&Path>) -> Result<ProfileOutput, CliError> {
-    let params = resolve_wg_params(d, config)?;
+/// Derive the x25519 keypair from the resolved parameters.
+fn derive_keypair(d: &WgDerive, params: &WgParams) -> Result<ProfileOutput, CliError> {
     let context = build_context(
         Profile::X25519,
         params.pipeline,
@@ -116,8 +119,18 @@ fn public_key(output: &ProfileOutput) -> Result<String, CliError> {
     public_key_string(output, Profile::X25519).ok_or(CliError::NoPubkey { profile: "x25519" })
 }
 
+/// A flag list wins wholesale; otherwise fall back to the recipe's list.
+fn merge_list(flag: &[String], recipe: Option<&[String]>) -> Vec<String> {
+    if flag.is_empty() {
+        recipe.map(<[String]>::to_vec).unwrap_or_default()
+    } else {
+        flag.to_vec()
+    }
+}
+
 fn run_key(d: &WgDerive, config: Option<&Path>) -> Result<(), CliError> {
-    let output = derive_keypair(d, config)?;
+    let params = resolve_wg_params(d, config)?;
+    let output = derive_keypair(d, &params)?;
     let key = private_key(&output);
     // Zeroizing wipes the buffer on drop.
     let line = Zeroizing::new(format!("{}\n", key.as_str()));
@@ -127,31 +140,58 @@ fn run_key(d: &WgDerive, config: Option<&Path>) -> Result<(), CliError> {
 }
 
 fn run_pubkey(d: &WgDerive, config: Option<&Path>) -> Result<(), CliError> {
-    let output = derive_keypair(d, config)?;
+    let params = resolve_wg_params(d, config)?;
+    let output = derive_keypair(d, &params)?;
     let public = public_key(&output)?;
     println!("{public}");
     Ok(())
 }
 
 fn run_peer(args: &WgPeerArgs, config: Option<&Path>) -> Result<(), CliError> {
-    let output = derive_keypair(&args.derive, config)?;
+    let params = resolve_wg_params(&args.derive, config)?;
+    let output = derive_keypair(&args.derive, &params)?;
     let public = public_key(&output)?;
-    let block = self_peer_block(&public, &args.allowed_ips, args.endpoint.as_deref());
+
+    // AllowedIPs defaults to the recipe's interface address (the IPs this
+    // device owns), which is what the other end routes back to it.
+    let allowed_ips = merge_list(
+        &args.allowed_ips,
+        params.wg.as_ref().map(|w| w.address.as_slice()),
+    );
+    if allowed_ips.is_empty() {
+        return Err(CliError::WgMissingAllowedIps);
+    }
+
+    let block = self_peer_block(&public, &allowed_ips, args.endpoint.as_deref());
     println!("{block}");
     Ok(())
 }
 
 fn run_config(args: &WgConfigArgs, config: Option<&Path>) -> Result<(), CliError> {
-    let output = derive_keypair(&args.derive, config)?;
+    let params = resolve_wg_params(&args.derive, config)?;
+    let output = derive_keypair(&args.derive, &params)?;
     let private = private_key(&output);
+    let wg = params.wg.as_ref();
+
+    // Flags override the recipe's [wg] fields.
+    let address = merge_list(&args.address, wg.map(|w| w.address.as_slice()));
+    if address.is_empty() {
+        return Err(CliError::WgMissingAddress);
+    }
+    let listen_port = args.listen_port.or_else(|| wg.and_then(|w| w.listen_port));
+    let dns = merge_list(&args.dns, wg.map(|w| w.dns.as_slice()));
+    let mtu = args.mtu.or_else(|| wg.and_then(|w| w.mtu));
 
     let mut text = Zeroizing::new(interface_block(
         private.as_str(),
-        &args.address,
-        args.listen_port,
-        &args.dns,
-        args.mtu,
+        &address,
+        listen_port,
+        &dns,
+        mtu,
     ));
+
+    // A CLI --peer-pubkey replaces the recipe's peers wholesale; otherwise emit
+    // one [Peer] block per recipe peer.
     if let Some(pubkey) = &args.peer_pubkey {
         text.push_str("\n\n");
         text.push_str(&config_peer_block(
@@ -160,6 +200,16 @@ fn run_config(args: &WgConfigArgs, config: Option<&Path>) -> Result<(), CliError
             &args.allowed_ips,
             args.keepalive,
         ));
+    } else if let Some(wg) = wg {
+        for peer in &wg.peers {
+            text.push_str("\n\n");
+            text.push_str(&config_peer_block(
+                &peer.public_key,
+                peer.endpoint.as_deref(),
+                &peer.allowed_ips,
+                peer.keepalive,
+            ));
+        }
     }
     text.push('\n');
 
@@ -263,11 +313,25 @@ fn write_config(path: Option<&Path>, content: &str) -> Result<(), CliError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{config_peer_block, interface_block, private_key, public_key, self_peer_block};
+    use super::{
+        config_peer_block, interface_block, merge_list, private_key, public_key, self_peer_block,
+    };
     use ykdf_core::{Context, Ikm, Profile, derive, extract};
 
     fn strings(items: &[&str]) -> Vec<String> {
         items.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    #[test]
+    fn merge_list_prefers_flags_then_recipe_then_empty() {
+        let flag = strings(&["10.0.0.9/24"]);
+        let recipe = strings(&["10.0.0.2/24"]);
+        // Flag wins wholesale.
+        assert_eq!(merge_list(&flag, Some(&recipe)), flag);
+        // No flag falls back to the recipe.
+        assert_eq!(merge_list(&[], Some(&recipe)), recipe);
+        // Neither is empty.
+        assert!(merge_list(&[], None).is_empty());
     }
 
     #[test]

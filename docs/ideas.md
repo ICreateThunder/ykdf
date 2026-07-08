@@ -100,17 +100,17 @@ naive deep HD derivation, which multiplies in-RAM secrets for no resilience gain
   Blocked until the `yubikey` crate gains non-TDES MGM key support; workaround
   is to set a TDES management key via `ykman`. PIN-protected/derived TDES keys
   are supported (`--mgmt-key protected|derived`).
-- Recipe extensions (planned as the `wg` follow-up): a `[recipe.<name>.wg]`
-  section carrying the non-secret WireGuard fields (address, listen-port, dns,
-  mtu, and one or more peers with their public key, endpoint, allowed-ips, and
-  keepalive), so `ykdf wg config <name>` needs no flags. The recipe splits into a
+- Recipe extensions (the `wg` extension is IMPLEMENTED): a recipe splits into a
   `core` layer (the derivation parameters, validated against `ykdf_core::Context`)
-  and typed `extension` sections over the derived key; the same shape generalises
-  to later use-cases such as `[recipe.<name>.x509]`. The key stays derived and the
-  section stores labels only, never a secret: a WireGuard PresharedKey stays
-  file-only (`--preshared-key-file`, itself deferred) and out of the recipe. The
-  schema lives in the shared `ykdf-config` crate so the CLI and the Android app
-  parse it identically.
+  and typed `extension` sections over the derived key. Shipped for WireGuard as
+  `[recipe.<name>.wg]` (address, listen-port, dns, mtu, and `[[wg.peer]]` entries
+  with public-key, endpoint, allowed-ips, keepalive), so `ykdf wg config <name>`
+  needs no flags. The key stays derived and the section stores labels only, never
+  a secret: a WireGuard PresharedKey stays file-only (`--preshared-key-file`,
+  itself deferred) and out of the recipe. The schema lives in the shared
+  `ykdf-config` crate so the CLI and, later, the Android app parse it identically.
+  The same shape is the template for later use-cases such as an x509 extension
+  (`[recipe.<name>.x509]`) over a derived signing key.
 - Recipe pipeline inherited across a profile override: when a recipe sets a
   `pipeline` and a caller overrides the `profile` with an explicit flag, the
   recipe's pipeline is still applied and may be one the new profile rejects. Today

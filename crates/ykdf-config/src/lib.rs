@@ -44,6 +44,35 @@ struct RawRecipe {
     index: Option<u32>,
     layered: Option<bool>,
     description: Option<String>,
+    /// The optional `[recipe.<name>.wg]` extension: non-secret `WireGuard` fields.
+    wg: Option<RawWg>,
+}
+
+/// The `[recipe.<name>.wg]` extension exactly as written, before validation. An
+/// extension carries labels only (network fields), never a secret; the key is
+/// still derived. Only `x25519` recipes may carry it (a `WireGuard` key is x25519).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+struct RawWg {
+    #[serde(default)]
+    address: Vec<String>,
+    listen_port: Option<u16>,
+    #[serde(default)]
+    dns: Vec<String>,
+    mtu: Option<u32>,
+    #[serde(default, rename = "peer")]
+    peers: Vec<RawWgPeer>,
+}
+
+/// A `[[recipe.<name>.wg.peer]]` entry exactly as written, before validation.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+struct RawWgPeer {
+    public_key: String,
+    endpoint: Option<String>,
+    #[serde(default)]
+    allowed_ips: Vec<String>,
+    keepalive: Option<u16>,
 }
 
 /// A recipe resolved against `[defaults]` and validated, ready to drive a
@@ -63,6 +92,38 @@ pub struct Resolved {
     pub layered: bool,
     /// Optional human description, shown by `recipe list`.
     pub description: Option<String>,
+    /// The resolved `WireGuard` extension, when the recipe has a `[wg]` section.
+    pub wg: Option<WgConfig>,
+}
+
+/// The resolved `[wg]` section of a recipe: the non-secret `WireGuard` interface
+/// and peer fields. Consumed by `ykdf wg`; the key itself is always derived, so
+/// nothing here is a secret.
+#[derive(Debug, Clone)]
+pub struct WgConfig {
+    /// Interface addresses (CIDR).
+    pub address: Vec<String>,
+    /// UDP port to listen on.
+    pub listen_port: Option<u16>,
+    /// DNS servers for the interface.
+    pub dns: Vec<String>,
+    /// Interface MTU.
+    pub mtu: Option<u32>,
+    /// Peers to include in the config.
+    pub peers: Vec<WgPeer>,
+}
+
+/// A single resolved `[[wg.peer]]` entry.
+#[derive(Debug, Clone)]
+pub struct WgPeer {
+    /// The peer's public key (base64).
+    pub public_key: String,
+    /// The peer's endpoint (host:port).
+    pub endpoint: Option<String>,
+    /// IP ranges to route to the peer (CIDR).
+    pub allowed_ips: Vec<String>,
+    /// `PersistentKeepalive` interval, in seconds.
+    pub keepalive: Option<u16>,
 }
 
 impl Catalogue {
@@ -181,6 +242,11 @@ impl Catalogue {
             }
         })?;
 
+        let wg = match &raw.wg {
+            Some(raw_wg) => Some(resolve_wg(name, profile, raw_wg)?),
+            None => None,
+        };
+
         Ok(Resolved {
             profile,
             pipeline,
@@ -188,8 +254,54 @@ impl Catalogue {
             index,
             layered,
             description: raw.description.clone(),
+            wg,
         })
     }
+}
+
+/// Validate a `[wg]` extension and lift it into a [`WgConfig`]. A `WireGuard` key
+/// is x25519, so the extension is only valid on an x25519 recipe; each peer needs
+/// a public key and at least one allowed-ips entry (`WireGuard` requires both).
+fn resolve_wg(recipe: &str, profile: Profile, raw: &RawWg) -> Result<WgConfig, ConfigError> {
+    if profile != Profile::X25519 {
+        return Err(ConfigError::WgNotX25519 {
+            recipe: recipe.to_owned(),
+            profile: profile.as_str(),
+        });
+    }
+
+    let mut peers = Vec::with_capacity(raw.peers.len());
+    for peer in &raw.peers {
+        if peer.public_key.trim().is_empty() {
+            return Err(ConfigError::WgPeerInvalid {
+                recipe: recipe.to_owned(),
+                detail: "a [[wg.peer]] needs a non-empty public-key".to_owned(),
+            });
+        }
+        if peer.allowed_ips.is_empty() {
+            return Err(ConfigError::WgPeerInvalid {
+                recipe: recipe.to_owned(),
+                detail: format!(
+                    "peer {} needs at least one allowed-ips entry",
+                    peer.public_key
+                ),
+            });
+        }
+        peers.push(WgPeer {
+            public_key: peer.public_key.clone(),
+            endpoint: peer.endpoint.clone(),
+            allowed_ips: peer.allowed_ips.clone(),
+            keepalive: peer.keepalive,
+        });
+    }
+
+    Ok(WgConfig {
+        address: raw.address.clone(),
+        listen_port: raw.listen_port,
+        dns: raw.dns.clone(),
+        mtu: raw.mtu,
+        peers,
+    })
 }
 
 /// The XDG default config path: `$XDG_CONFIG_HOME/ykdf/config.toml`, falling back
@@ -257,6 +369,20 @@ pub enum ConfigError {
         /// The underlying core error.
         source: ykdf_core::Error,
     },
+    /// A recipe carries a `[wg]` section but does not derive an x25519 key.
+    WgNotX25519 {
+        /// The recipe holding the extension.
+        recipe: String,
+        /// The recipe's actual profile.
+        profile: &'static str,
+    },
+    /// A recipe's `[[wg.peer]]` entry is missing a required field.
+    WgPeerInvalid {
+        /// The recipe holding the bad peer.
+        recipe: String,
+        /// What is wrong with the peer.
+        detail: String,
+    },
 }
 
 impl core::fmt::Display for ConfigError {
@@ -286,6 +412,14 @@ impl core::fmt::Display for ConfigError {
             ),
             ConfigError::InvalidRecipe { recipe, source } => {
                 write!(f, "recipe {recipe:?}: {source}")
+            }
+            ConfigError::WgNotX25519 { recipe, profile } => write!(
+                f,
+                "recipe {recipe:?}: a [wg] section needs profile x25519, but this \
+                 recipe derives {profile}"
+            ),
+            ConfigError::WgPeerInvalid { recipe, detail } => {
+                write!(f, "recipe {recipe:?}: {detail}")
             }
         }
     }
@@ -437,5 +571,106 @@ mod tests {
             Catalogue::load(Some(missing)),
             Err(ConfigError::Io { .. })
         ));
+    }
+
+    #[test]
+    fn recipe_without_wg_section_resolves_to_none() {
+        assert!(cat().resolve("wg-home").unwrap().wg.is_none());
+    }
+
+    #[test]
+    fn wg_extension_resolves() {
+        let cat = Catalogue::parse(
+            r#"
+            [recipe.home]
+            profile = "x25519"
+
+            [recipe.home.wg]
+            address     = ["10.0.0.2/24", "fd00::2/64"]
+            listen-port = 51820
+            dns         = ["1.1.1.1"]
+            mtu         = 1420
+
+            [[recipe.home.wg.peer]]
+            public-key  = "serverpubkey"
+            endpoint    = "vpn.example.com:51820"
+            allowed-ips = ["0.0.0.0/0", "::/0"]
+            keepalive   = 25
+            "#,
+            None,
+        )
+        .unwrap();
+        let wg = cat.resolve("home").unwrap().wg.unwrap();
+        assert_eq!(wg.address, ["10.0.0.2/24", "fd00::2/64"]);
+        assert_eq!(wg.listen_port, Some(51820));
+        assert_eq!(wg.dns, ["1.1.1.1"]);
+        assert_eq!(wg.mtu, Some(1420));
+        assert_eq!(wg.peers.len(), 1);
+        let peer = &wg.peers[0];
+        assert_eq!(peer.public_key, "serverpubkey");
+        assert_eq!(peer.endpoint.as_deref(), Some("vpn.example.com:51820"));
+        assert_eq!(peer.allowed_ips, ["0.0.0.0/0", "::/0"]);
+        assert_eq!(peer.keepalive, Some(25));
+    }
+
+    #[test]
+    fn wg_extension_allows_no_peers() {
+        let cat = Catalogue::parse(
+            "[recipe.home]\nprofile = \"x25519\"\n[recipe.home.wg]\naddress = [\"10.0.0.2/24\"]\n",
+            None,
+        )
+        .unwrap();
+        let wg = cat.resolve("home").unwrap().wg.unwrap();
+        assert!(wg.peers.is_empty());
+        assert_eq!(wg.address, ["10.0.0.2/24"]);
+    }
+
+    #[test]
+    fn wg_on_non_x25519_recipe_is_rejected() {
+        let cat = Catalogue::parse(
+            "[recipe.sign]\nprofile = \"ed25519\"\n[recipe.sign.wg]\naddress = [\"10.0.0.2/24\"]\n",
+            None,
+        )
+        .unwrap();
+        assert!(matches!(
+            cat.resolve("sign"),
+            Err(ConfigError::WgNotX25519 { .. })
+        ));
+    }
+
+    #[test]
+    fn wg_peer_without_allowed_ips_is_rejected() {
+        let cat = Catalogue::parse(
+            "[recipe.home]\nprofile = \"x25519\"\n[[recipe.home.wg.peer]]\npublic-key = \"k\"\n",
+            None,
+        )
+        .unwrap();
+        assert!(matches!(
+            cat.resolve("home"),
+            Err(ConfigError::WgPeerInvalid { .. })
+        ));
+    }
+
+    #[test]
+    fn wg_peer_with_empty_public_key_is_rejected() {
+        let cat = Catalogue::parse(
+            "[recipe.home]\nprofile = \"x25519\"\n[[recipe.home.wg.peer]]\npublic-key = \"\"\nallowed-ips = [\"0.0.0.0/0\"]\n",
+            None,
+        )
+        .unwrap();
+        assert!(matches!(
+            cat.resolve("home"),
+            Err(ConfigError::WgPeerInvalid { .. })
+        ));
+    }
+
+    #[test]
+    fn wg_unknown_field_is_rejected() {
+        let err = Catalogue::parse(
+            "[recipe.home]\nprofile = \"x25519\"\n[recipe.home.wg]\nlisten_port = 51820\n",
+            None,
+        );
+        // `listen_port` (snake_case) is not the kebab-case `listen-port` key.
+        assert!(matches!(err, Err(ConfigError::Parse { .. })));
     }
 }

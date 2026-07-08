@@ -94,8 +94,9 @@ pub struct WgPeerArgs {
     #[command(flatten)]
     pub derive: WgDerive,
 
-    /// IP ranges the other end should route to this device (CIDR; repeatable)
-    #[arg(long, value_name = "CIDR", required = true)]
+    /// IP ranges the other end should route to this device (CIDR; repeatable).
+    /// Defaults to the recipe's `[wg].address` when a recipe supplies one
+    #[arg(long, value_name = "CIDR")]
     pub allowed_ips: Vec<String>,
 
     /// Endpoint to advertise for this device (host:port)
@@ -108,8 +109,9 @@ pub struct WgConfigArgs {
     #[command(flatten)]
     pub derive: WgDerive,
 
-    /// Interface address (CIDR; repeatable)
-    #[arg(long, value_name = "CIDR", required = true)]
+    /// Interface address (CIDR; repeatable). Required unless a recipe's
+    /// `[wg].address` supplies one
+    #[arg(long, value_name = "CIDR")]
     pub address: Vec<String>,
 
     /// UDP port to listen on
