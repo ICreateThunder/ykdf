@@ -288,7 +288,9 @@ fn resolve_wg(recipe: &str, profile: Profile, raw: &RawWg) -> Result<WgConfig, C
             });
         }
         peers.push(WgPeer {
-            public_key: peer.public_key.clone(),
+            // Store the trimmed key so validation and the emitted config agree; a
+            // base64 WireGuard key never has surrounding whitespace.
+            public_key: peer.public_key.trim().to_owned(),
             endpoint: peer.endpoint.clone(),
             allowed_ips: peer.allowed_ips.clone(),
             keepalive: peer.keepalive,
@@ -649,6 +651,17 @@ mod tests {
             cat.resolve("home"),
             Err(ConfigError::WgPeerInvalid { .. })
         ));
+    }
+
+    #[test]
+    fn wg_peer_public_key_is_trimmed() {
+        let cat = Catalogue::parse(
+            "[recipe.home]\nprofile = \"x25519\"\n[[recipe.home.wg.peer]]\npublic-key = \"  k  \"\nallowed-ips = [\"0.0.0.0/0\"]\n",
+            None,
+        )
+        .unwrap();
+        let wg = cat.resolve("home").unwrap().wg.unwrap();
+        assert_eq!(wg.peers[0].public_key, "k");
     }
 
     #[test]
