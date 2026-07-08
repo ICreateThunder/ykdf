@@ -58,4 +58,30 @@ object Native {
      * cannot drift from the supported profiles. Not secret; takes no input.
      */
     external fun profiles(): Array<String>
+
+    /**
+     * Derive an x25519 WireGuard key and render a full `wg-quick` config from it
+     * plus the given non-secret network fields. Byte-identical to
+     * `ykdf wg config` because both call the shared `ykdf_config::WgConfig`
+     * render. The result embeds the private key, so treat it as sensitive.
+     *
+     * Optional numeric fields use a negative value to mean "omitted"; an empty
+     * `peerPublicKey` means "no peer". Repeatable fields (address, dns,
+     * allowedIps) are arrays.
+     *
+     * @throws IllegalArgumentException on invalid inputs (e.g. IKM too short).
+     */
+    external fun wgConfig(
+        ikm: ByteArray,
+        purpose: String,
+        index: Int,
+        address: Array<String>,
+        listenPort: Int,
+        dns: Array<String>,
+        mtu: Int,
+        peerPublicKey: String,
+        endpoint: String,
+        allowedIps: Array<String>,
+        keepalive: Int,
+    ): String
 }

@@ -38,4 +38,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.2")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui")
+    // Pure-Java QR encoder for the WireGuard config handoff (the WireGuard
+    // Android app imports a tunnel by scanning a QR). No runtime network use.
+    implementation("com.google.zxing:core:3.5.3")
 }
