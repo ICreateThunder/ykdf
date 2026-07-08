@@ -13,7 +13,7 @@ use std::path::Path;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use ykdf_core::{Pipeline, Profile, ProfileOutput, derive, public_key_string};
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::cli::{WgCommand, WgConfigArgs, WgDerive, WgPeerArgs};
 use crate::derive::{apply_passphrase, build_context, extract_ikm};
@@ -102,13 +102,12 @@ fn derive_keypair(d: &WgDerive, config: Option<&Path>) -> Result<ProfileOutput, 
     derive(&master_key, &context).map_err(CliError::Core)
 }
 
-/// The base64 private key. x25519 always derives a `SecretKey`, so the other
-/// arms are unreachable in practice; treat them as an internal error rather than
-/// panicking.
-fn private_key(output: &ProfileOutput) -> Result<Zeroizing<String>, CliError> {
+/// The base64 private key. `wg` pins the profile to x25519, which always derives
+/// a `SecretKey`, so the other variants cannot occur.
+fn private_key(output: &ProfileOutput) -> Zeroizing<String> {
     match output {
-        ProfileOutput::SecretKey(k) => Ok(Zeroizing::new(BASE64.encode(k.0))),
-        _ => Err(CliError::NoPubkey { profile: "x25519" }),
+        ProfileOutput::SecretKey(k) => Zeroizing::new(BASE64.encode(k.0)),
+        _ => unreachable!("wg pins the profile to x25519, which always derives a SecretKey"),
     }
 }
 
@@ -119,7 +118,7 @@ fn public_key(output: &ProfileOutput) -> Result<String, CliError> {
 
 fn run_key(d: &WgDerive, config: Option<&Path>) -> Result<(), CliError> {
     let output = derive_keypair(d, config)?;
-    let key = private_key(&output)?;
+    let key = private_key(&output);
     // Zeroizing wipes the buffer on drop.
     let line = Zeroizing::new(format!("{}\n", key.as_str()));
     std::io::stdout()
@@ -144,7 +143,7 @@ fn run_peer(args: &WgPeerArgs, config: Option<&Path>) -> Result<(), CliError> {
 
 fn run_config(args: &WgConfigArgs, config: Option<&Path>) -> Result<(), CliError> {
     let output = derive_keypair(&args.derive, config)?;
-    let private = private_key(&output)?;
+    let private = private_key(&output);
 
     let mut text = Zeroizing::new(interface_block(
         private.as_str(),
@@ -168,6 +167,10 @@ fn run_config(args: &WgConfigArgs, config: Option<&Path>) -> Result<(), CliError
 }
 
 /// Build the `[Interface]` block. Optional fields are omitted when unset.
+///
+/// One of the intermediate lines holds the base64 private key, so the line
+/// buffers are zeroized after the block is assembled. The joined result carries
+/// the key too and is wrapped in `Zeroizing` by the caller.
 fn interface_block(
     private_b64: &str,
     address: &[String],
@@ -189,7 +192,11 @@ fn interface_block(
     if let Some(mtu) = mtu {
         lines.push(format!("MTU = {mtu}"));
     }
-    lines.join("\n")
+    let joined = lines.join("\n");
+    for line in &mut lines {
+        line.zeroize();
+    }
+    joined
 }
 
 /// Build a `[Peer]` block for a remote peer (used by `wg config`).
@@ -340,7 +347,7 @@ mod tests {
     #[test]
     fn private_key_is_44_char_base64() {
         let out = keypair();
-        let key = private_key(&out).unwrap();
+        let key = private_key(&out);
         assert_eq!(key.len(), 44);
         assert!(key.ends_with('='));
     }
