@@ -2081,6 +2081,7 @@ dependencies = [
  "serde",
  "toml",
  "ykdf-core",
+ "zeroize",
 ]
 
 [[package]]
