@@ -82,6 +82,9 @@ pub fn wg_config(
     // WireGuard keys are x25519; the empty pipeline selects the profile default.
     let (_profile, output) = derive_output(ikm, "", "x25519", purpose, index)?;
     let private_b64 = match &output {
+        // encode's return String is moved straight into Zeroizing, so the 32-byte
+        // secret crosses from ZeroizeOnDrop custody into a new wiped container
+        // with no intermediate copy left behind.
         ProfileOutput::SecretKey(k) => Zeroizing::new(BASE64.encode(k.0)),
         // x25519 always yields a SecretKey; this arm cannot occur.
         _ => return Err("x25519 did not yield a secret key".to_owned()),
@@ -311,16 +314,15 @@ fn run(
     purpose: &JString<'_>,
     index: jint,
 ) -> Result<Vec<u8>, String> {
-    let mut ikm_bytes = env.convert_byte_array(ikm).map_err(|e| e.to_string())?;
+    // Zeroizing wipes the IKM on every path, including the `?` early returns
+    // below; a plain Vec would leak it into freed heap on an error.
+    let ikm_bytes = Zeroizing::new(env.convert_byte_array(ikm).map_err(|e| e.to_string())?);
     let pipeline = jstring(env, pipeline)?;
     let profile = jstring(env, profile)?;
     let purpose = jstring(env, purpose)?;
     let index = u32::try_from(index).map_err(|_| "index must be non-negative".to_owned())?;
 
-    let result = derive_secret(&ikm_bytes, &pipeline, &profile, &purpose, index);
-    // Wipe the IKM copy we pulled across the boundary regardless of outcome.
-    ikm_bytes.zeroize();
-    result
+    derive_secret(&ikm_bytes, &pipeline, &profile, &purpose, index)
 }
 
 fn jstring(env: &mut Env<'_>, s: &JString<'_>) -> Result<String, String> {
@@ -335,15 +337,14 @@ fn run_public(
     purpose: &JString<'_>,
     index: jint,
 ) -> Result<String, String> {
-    let mut ikm_bytes = env.convert_byte_array(ikm).map_err(|e| e.to_string())?;
+    // Zeroizing wipes the IKM on every path, including the `?` early returns.
+    let ikm_bytes = Zeroizing::new(env.convert_byte_array(ikm).map_err(|e| e.to_string())?);
     let pipeline = jstring(env, pipeline)?;
     let profile = jstring(env, profile)?;
     let purpose = jstring(env, purpose)?;
     let index = u32::try_from(index).map_err(|_| "index must be non-negative".to_owned())?;
 
-    let result = public_key(&ikm_bytes, &pipeline, &profile, &purpose, index);
-    ikm_bytes.zeroize();
-    result
+    public_key(&ikm_bytes, &pipeline, &profile, &purpose, index)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -361,7 +362,9 @@ fn run_wg_config(
     allowed_ips: &JObjectArray<'_, JString<'_>>,
     keepalive: jint,
 ) -> Result<Zeroizing<String>, String> {
-    let mut ikm_bytes = env.convert_byte_array(ikm).map_err(|e| e.to_string())?;
+    // Zeroizing wipes the IKM on every path: there are several `?` early returns
+    // below (string and array conversions) before the derivation.
+    let ikm_bytes = Zeroizing::new(env.convert_byte_array(ikm).map_err(|e| e.to_string())?);
     let purpose = jstring(env, purpose)?;
     let index = u32::try_from(index).map_err(|_| "index must be non-negative".to_owned())?;
     let address = jstring_array(env, address)?;
@@ -389,9 +392,7 @@ fn run_wg_config(
         peers,
     };
 
-    let result = wg_config(&ikm_bytes, &purpose, index, &wg);
-    ikm_bytes.zeroize();
-    result
+    wg_config(&ikm_bytes, &purpose, index, &wg)
 }
 
 /// Convert a Java `String[]` to a `Vec<String>`.

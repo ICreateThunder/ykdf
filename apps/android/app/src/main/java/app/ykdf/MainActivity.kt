@@ -146,19 +146,21 @@ class MainActivity : ComponentActivity() {
         }
         post("Reading YubiKey...")
         val pinBytes = pin.value.toByteArray(Charsets.US_ASCII)
+        var ikm: ByteArray? = null
         try {
-            val ikm = YubiKeyNfc.deriveIkm(isoDep, pinBytes, layered.value)
+            ikm = YubiKeyNfc.deriveIkm(isoDep, pinBytes, layered.value)
             when (mode.value) {
                 Mode.Derive -> runDerive(ikm)
                 Mode.WireGuard -> runWireGuard(ikm)
             }
-            ikm.fill(0)
         } catch (e: Exception) {
             when (mode.value) {
                 Mode.Derive -> postDerive("Error: ${e.message}", "", "")
                 Mode.WireGuard -> postWireGuard("Error: ${e.message}", "", null)
             }
         } finally {
+            // Zero the IKM on every path, including when derivation throws.
+            ikm?.fill(0)
             pinBytes.fill(0)
             runCatching { isoDep.close() }
         }
