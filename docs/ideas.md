@@ -100,6 +100,23 @@ naive deep HD derivation, which multiplies in-RAM secrets for no resilience gain
   Blocked until the `yubikey` crate gains non-TDES MGM key support; workaround
   is to set a TDES management key via `ykman`. PIN-protected/derived TDES keys
   are supported (`--mgmt-key protected|derived`).
+- Recipe extensions (planned as the `wg` follow-up): a `[recipe.<name>.wg]`
+  section carrying the non-secret WireGuard fields (address, listen-port, dns,
+  mtu, and one or more peers with their public key, endpoint, allowed-ips, and
+  keepalive), so `ykdf wg config <name>` needs no flags. The recipe splits into a
+  `core` layer (the derivation parameters, validated against `ykdf_core::Context`)
+  and typed `extension` sections over the derived key; the same shape generalises
+  to later use-cases such as `[recipe.<name>.x509]`. The key stays derived and the
+  section stores labels only, never a secret: a WireGuard PresharedKey stays
+  file-only (`--preshared-key-file`, itself deferred) and out of the recipe. The
+  schema lives in the shared `ykdf-config` crate so the CLI and the Android app
+  parse it identically.
+- Recipe pipeline inherited across a profile override: when a recipe sets a
+  `pipeline` and a caller overrides the `profile` with an explicit flag, the
+  recipe's pipeline is still applied and may be one the new profile rejects. Today
+  that surfaces as the generic pipeline-not-accepted error; diagnose the
+  profile-versus-recipe-pipeline mismatch specifically so the cause is obvious.
+  (Deferred from the recipes review.)
 - PIN / PUK / management-key rotation as part of or alongside `ykdf init`.
 - Seed-derived HMAC slot 2 secret (reproducible from a passphrase) if the
   display-once model proves inconvenient.

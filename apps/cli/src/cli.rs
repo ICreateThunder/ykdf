@@ -27,6 +27,122 @@ pub enum Commands {
     Clone(CloneArgs),
     /// List or show named recipes from the config file
     Recipe(RecipeArgs),
+    /// Derive `WireGuard` keys and assemble configs (x25519)
+    Wg(WgArgs),
+}
+
+#[derive(clap::Args)]
+pub struct WgArgs {
+    #[command(subcommand)]
+    pub command: WgCommand,
+}
+
+#[derive(Subcommand)]
+pub enum WgCommand {
+    /// Print the derived `WireGuard` private key (base64)
+    Key(WgDerive),
+    /// Print the derived `WireGuard` public key (base64)
+    Pubkey(WgDerive),
+    /// Print a `[Peer]` stanza for this device, to paste into the other end's
+    /// config
+    Peer(WgPeerArgs),
+    /// Assemble a full `[Interface]` config (with an optional `[Peer]`)
+    Config(WgConfigArgs),
+}
+
+/// The derivation surface shared by every `wg` subcommand. The profile is always
+/// x25519 (the `WireGuard` key type), so there is no `--profile` flag.
+#[derive(clap::Args)]
+pub struct WgDerive {
+    /// Named recipe to derive (its profile must be x25519; explicit flags still
+    /// override). Omit to specify everything with flags
+    #[arg(value_name = "RECIPE")]
+    pub recipe: Option<String>,
+
+    /// Derivation purpose (lowercase alphanumeric + hyphens, 1-64 chars;
+    /// required unless a recipe supplies it)
+    #[arg(long)]
+    pub purpose: Option<String>,
+
+    /// KDF pipeline override
+    #[arg(long)]
+    pub pipeline: Option<PipelineArg>,
+
+    /// Key rotation index
+    #[arg(long)]
+    pub index: Option<u32>,
+
+    /// Read IKM from file instead of `YubiKey` (testing)
+    #[arg(long, value_name = "PATH")]
+    pub ikm_file: Option<std::path::PathBuf>,
+
+    /// Use layered mode (PIV + HMAC)
+    #[arg(long)]
+    pub layered: bool,
+
+    /// Prompt for passphrase as additional entropy factor
+    #[arg(long)]
+    pub passphrase: bool,
+
+    /// Smartcard transport for the PIV factor
+    #[arg(long, default_value = "auto")]
+    pub transport: TransportArg,
+}
+
+#[derive(clap::Args)]
+pub struct WgPeerArgs {
+    #[command(flatten)]
+    pub derive: WgDerive,
+
+    /// IP ranges the other end should route to this device (CIDR; repeatable)
+    #[arg(long, value_name = "CIDR", required = true)]
+    pub allowed_ips: Vec<String>,
+
+    /// Endpoint to advertise for this device (host:port)
+    #[arg(long, value_name = "HOST:PORT")]
+    pub endpoint: Option<String>,
+}
+
+#[derive(clap::Args)]
+pub struct WgConfigArgs {
+    #[command(flatten)]
+    pub derive: WgDerive,
+
+    /// Interface address (CIDR; repeatable)
+    #[arg(long, value_name = "CIDR", required = true)]
+    pub address: Vec<String>,
+
+    /// UDP port to listen on
+    #[arg(long, value_name = "PORT")]
+    pub listen_port: Option<u16>,
+
+    /// DNS server for the interface (repeatable)
+    #[arg(long, value_name = "IP")]
+    pub dns: Vec<String>,
+
+    /// Interface MTU
+    #[arg(long, value_name = "N")]
+    pub mtu: Option<u32>,
+
+    /// Peer public key (base64); gates the `[Peer]` block
+    #[arg(long, value_name = "BASE64")]
+    pub peer_pubkey: Option<String>,
+
+    /// Peer endpoint (host:port)
+    #[arg(long, value_name = "HOST:PORT", requires = "peer_pubkey")]
+    pub endpoint: Option<String>,
+
+    /// IP ranges to route to the peer (CIDR; repeatable)
+    #[arg(long, value_name = "CIDR", requires = "peer_pubkey")]
+    pub allowed_ips: Vec<String>,
+
+    /// Keepalive interval for the peer, in seconds
+    #[arg(long, value_name = "SECS", requires = "peer_pubkey")]
+    pub keepalive: Option<u16>,
+
+    /// Write the config to PATH (mode 0600) instead of stdout
+    #[arg(long, short = 'o', value_name = "PATH")]
+    pub output: Option<std::path::PathBuf>,
 }
 
 #[derive(clap::Args)]
