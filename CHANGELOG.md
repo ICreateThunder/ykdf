@@ -18,7 +18,11 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
   fixed to x25519, the WireGuard key type, so `wg pubkey` matches
   `pubkey --profile x25519` byte for byte; a recipe name fills the derivation
   parameters and must resolve to x25519. `wg config -o <path>` writes the file
-  with mode 0600 because it holds the private key.
+  with mode 0600 because it holds the private key. A recipe can also carry the
+  network fields in a `[recipe.<name>.wg]` section (address, listen-port, dns,
+  mtu, and `[[wg.peer]]` entries), so `ykdf wg config <name>` assembles a whole
+  config with no flags; flags still override, and `recipe show` prints the
+  resolved section. The section is labels only, never a secret.
 - Recipes: a named catalogue of derivation parameters in a TOML file
   (`$XDG_CONFIG_HOME/ykdf/config.toml`, overridable with `--config` or
   `YKDF_CONFIG`), so a routine key is `ykdf derive wg-home` rather than a line of

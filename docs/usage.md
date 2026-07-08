@@ -135,8 +135,33 @@ A recipe supplies the derivation parameters exactly as it does for `derive`, so
 `ykdf wg config home --address 10.0.0.2/24` reuses the `home` recipe's purpose
 and index. The recipe's profile must be `x25519`; naming an `ed25519` or
 `age-x25519` recipe is refused rather than deriving a key WireGuard cannot use.
-Network fields stay on the command line for now; a later `[recipe.<name>.wg]`
-section will let a recipe carry them too.
+
+A recipe can also carry the network fields in a `[recipe.<name>.wg]` section, so
+a whole config comes from one command:
+
+```toml
+[recipe.home]
+profile = "x25519"
+purpose = "wg-home"
+
+[recipe.home.wg]
+address     = ["10.0.0.2/24"]
+listen-port = 51820
+dns         = ["1.1.1.1"]
+
+[[recipe.home.wg.peer]]        # repeat the block for more peers
+public-key  = "<server-pubkey>"
+endpoint    = "vpn.example.com:51820"
+allowed-ips = ["0.0.0.0/0", "::/0"]
+keepalive   = 25
+```
+
+`ykdf wg config home` then assembles the full config with no flags. Flags still
+override: `--dns 9.9.9.9` swaps only the DNS, and `--peer-pubkey <k>
+--allowed-ips <cidr>` replaces the recipe's peers with the one given.
+`ykdf wg peer home` uses the recipe's `address` as its AllowedIPs. The section is
+labels only (a PresharedKey is never stored), and `ykdf recipe show home` prints
+the resolved fields before you derive.
 
 ## Choosing the smartcard transport
 
