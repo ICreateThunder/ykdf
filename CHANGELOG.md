@@ -135,6 +135,15 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
   interfaces and is briefly unavailable on HID right after a PIV touch, so this
   ordering avoids a timeout. The derived output is unchanged.
 
+### Security
+
+- Documented the two ways a derived secret can still reach disk despite
+  in-memory zeroizing, and how to avoid each. For the kernel paths, encrypt or
+  disable swap and disable core dumps. For files saved on purpose, prefer a
+  transient handoff: the CLI can pipe a WireGuard key straight into `wg` so
+  nothing is written, whereas the Android QR is weaker because the WireGuard app
+  stores the tunnel it scans. See the Threat Model in `SECURITY.md`.
+
 ## [0.2.0] - 2026-06-26
 
 ### Added

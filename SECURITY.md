@@ -64,10 +64,40 @@ Available via:
 
 YKDF handles cryptographic key material. Relevant threats:
 
-- **Memory exposure** - derived keys exist in memory during use; YKDF zeroizes on drop
+- **Memory exposure** - derived keys exist in memory during use; YKDF zeroizes them on drop. Swap and core dumps can still leave a copy on disk (see Secrets reaching disk)
 - **Side channels** - constant-time operations for all key-sensitive paths
 - **Supply chain** - cargo-deny allowlist, cargo-audit in CI, signed tags, reproducible builds (goal)
 - **Dependency compromise** - minimal dependency surface, audited crates preferred
+
+### Secrets reaching disk
+
+YKDF holds secret key material in memory only while it is in use and zeroizes it
+on drop; the binary never writes a secret to disk itself. Two paths can still
+put plaintext on disk, and both are properties of how the host is configured
+rather than something YKDF can enforce:
+
+- **Swap and core dumps.** While a secret is live in RAM the kernel may page it
+  to swap, and a paged copy is beyond the reach of zeroize. If swap is enabled,
+  encrypt it (swap on LUKS, or a random-key swap device) so any paged secret is
+  ciphertext at rest; disabling swap removes the vector outright. A core dump is
+  the same problem from a crash, so keep core dumps disabled for the process or
+  the system.
+- **Files you choose to save.** Some outputs contain a secret by design: a
+  WireGuard `.conf` embeds the interface private key, and an exported derived key
+  is the key itself. Once written, the file stays on disk until you remove it.
+  Keep these on an encrypted filesystem, rely on the restrictive permissions YKDF
+  sets (config files are written `0600`), and delete them once imported. Where a
+  transient handoff exists, prefer it. On the CLI the private key can be piped
+  straight into the consuming command (for example
+  `wg set wg0 private-key <(ykdf wg key ...)`), so it reaches the kernel through an
+  anonymous pipe and is never written anywhere. The Android QR is weaker: YKDF
+  writes no file, but the WireGuard app stores the tunnel it scans in its own
+  storage, so the secret still ends up at rest on the receiving side.
+
+Full-disk encryption covers both cases at the OS level and is the simplest single
+step. It protects data at rest only: it does nothing once the disk is unlocked
+and the system is running, so it complements the in-memory zeroizing rather than
+replacing it.
 
 ## Cryptographic Algorithm Notes
 
