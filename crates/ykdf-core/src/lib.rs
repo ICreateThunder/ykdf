@@ -29,6 +29,9 @@ mod stretch;
 #[cfg(feature = "format")]
 mod format;
 
+#[cfg(feature = "sign")]
+mod sign;
+
 pub use self::context::Context;
 pub use self::derive::{derive, derive_raw};
 pub use self::error::{Error, Result};
@@ -48,3 +51,6 @@ pub use self::stretch::{
 
 #[cfg(feature = "format")]
 pub use self::format::public_key_string;
+
+#[cfg(feature = "sign")]
+pub use self::sign::{HashAlg, sign_message, verify_message};

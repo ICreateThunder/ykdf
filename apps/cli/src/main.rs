@@ -6,6 +6,7 @@ mod format;
 mod ikm;
 mod init;
 mod recipe;
+mod sign;
 mod term;
 mod wg;
 
@@ -30,5 +31,7 @@ fn run(cli: Cli) -> Result<(), CliError> {
         Commands::Clone(args) => clone::run_clone(&args),
         Commands::Recipe(args) => recipe::run_recipe(args.command, config),
         Commands::Wg(args) => wg::run_wg(args.command, config),
+        Commands::Sign(args) => sign::run_sign(args, config),
+        Commands::Verify(args) => sign::run_verify(&args),
     }
 }

@@ -43,7 +43,7 @@ pub fn public_key_string(output: &ProfileOutput, profile: Profile) -> Option<Str
 }
 
 /// Write a length-prefixed OpenSSH string (u32 big-endian length + bytes).
-fn write_openssh_string(buf: &mut Vec<u8>, data: &[u8]) {
+pub(crate) fn write_openssh_string(buf: &mut Vec<u8>, data: &[u8]) {
     let len = u32::try_from(data.len()).unwrap_or(u32::MAX);
     buf.extend_from_slice(&len.to_be_bytes());
     buf.extend_from_slice(data);

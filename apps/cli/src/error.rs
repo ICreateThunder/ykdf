@@ -60,6 +60,10 @@ pub enum CliError {
         path: PathBuf,
         source: std::io::Error,
     },
+    /// `sign` needs a signing profile, but the recipe/flags give another.
+    SignProfileMismatch { profile: &'static str },
+    /// Failed to read a sign/verify input (message, signature, or public key).
+    InputRead(std::io::Error),
 }
 
 impl CliError {
@@ -78,6 +82,7 @@ impl CliError {
             | Self::WgProfileMismatch { .. }
             | Self::WgMissingAddress
             | Self::WgMissingAllowedIps
+            | Self::SignProfileMismatch { .. }
             | Self::CloneStdinUnsupported { .. } => 2,
             _ => 1,
         }
@@ -167,6 +172,12 @@ impl std::fmt::Display for CliError {
             Self::OutputFile { path, source } => {
                 write!(f, "failed to write config to {}: {source}", path.display())
             }
+            Self::SignProfileMismatch { profile } => write!(
+                f,
+                "sign needs an ed25519 key, but this derives {profile}; \
+                 use an ed25519 recipe or pass --profile ed25519"
+            ),
+            Self::InputRead(e) => write!(f, "failed to read input: {e}"),
         }
     }
 }

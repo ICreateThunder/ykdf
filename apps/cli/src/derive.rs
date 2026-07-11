@@ -13,12 +13,12 @@ use crate::format;
 use crate::ikm::IkmSource;
 
 /// Derivation parameters after merging a recipe (if any) with explicit flags.
-struct Params {
-    profile: Profile,
-    pipeline: Pipeline,
-    purpose: String,
-    index: u32,
-    layered: bool,
+pub(crate) struct Params {
+    pub(crate) profile: Profile,
+    pub(crate) pipeline: Pipeline,
+    pub(crate) purpose: String,
+    pub(crate) index: u32,
+    pub(crate) layered: bool,
 }
 
 /// Merge an optional named recipe with explicit flags, applying SSH-style
@@ -26,7 +26,7 @@ struct Params {
 ///
 /// `--layered` is additive (a flag or a recipe can turn it on; there is no CLI
 /// way to force it off for a recipe that sets it).
-fn resolve_params(
+pub(crate) fn resolve_params(
     recipe: Option<&str>,
     config: Option<&Path>,
     profile: Option<ProfileArg>,

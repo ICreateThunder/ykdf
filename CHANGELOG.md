@@ -9,6 +9,16 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
 
 ### Added
 
+- `ykdf sign` and `ykdf verify`: detached signatures over a derived key. `ed25519`
+  produces an OpenSSH signature (SSHSIG), so `ssh-keygen -Y verify` validates it
+  with no YKDF installed; `verify` checks a signature against a supplied public
+  key and needs no YubiKey. `sign` reads the message from stdin or `--in` and
+  writes the signature to stdout or `--out`, and takes `--namespace` (default
+  `file`) and `--hash sha512|sha256` (default `sha512`); a recipe supplies the
+  derivation parameters as it does for `derive`, and the profile must be a
+  signing profile (`ed25519`). Signing is deterministic. The byte layout is
+  shared in `ykdf-core` behind a `sign` feature. ML-DSA signing (a documented
+  `ykdf-sig:v1` container) lands in a follow-up.
 - Android app: WireGuard mode. The app now has two modes (a segmented Derive /
   WireGuard control): Derive is the existing any-profile flow, and WireGuard
   renders a full `wg-quick` config from an x25519 key. The config comes from a
