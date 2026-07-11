@@ -327,7 +327,8 @@ impl<'a> SshReader<'a> {
     }
 
     fn read_string(&mut self) -> Result<&'a [u8]> {
-        let len = self.read_u32()? as usize;
+        let len = usize::try_from(self.read_u32()?)
+            .map_err(|_| malformed_sig("string length exceeds usize"))?;
         self.read_raw(len)
     }
 }
