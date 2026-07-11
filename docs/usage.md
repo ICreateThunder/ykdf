@@ -163,6 +163,44 @@ override: `--dns 9.9.9.9` swaps only the DNS, and `--peer-pubkey <k>
 labels only (a PresharedKey is never stored), and `ykdf recipe show home` prints
 the resolved fields before you derive.
 
+## Signing and verifying
+
+`ykdf sign` derives a signing key and signs a message with it. For `ed25519` the
+output is an OpenSSH signature (SSHSIG), so anyone can check it with
+`ssh-keygen -Y verify` and no YKDF installed:
+
+```bash
+ykdf pubkey --profile ed25519 --purpose release > signer.pub
+ykdf sign --profile ed25519 --purpose release --in CHANGELOG.md --out CHANGELOG.md.sig
+```
+
+The message is read from stdin, or from `--in <path>`; the signature goes to
+stdout, or to `--out <path>`. `--namespace` sets the SSHSIG domain (default
+`file`) and the verifier must use the same value; `--hash sha512|sha256` selects
+the message-hash algorithm (default `sha512`). A recipe supplies the derivation
+parameters exactly as it does for `derive`, and the profile must be a signing
+profile (`ed25519`).
+
+`ykdf verify` checks a signature against a supplied public key. It derives
+nothing and needs no YubiKey:
+
+```bash
+ykdf verify --public-key @signer.pub --signature CHANGELOG.md.sig --in CHANGELOG.md
+```
+
+`--public-key` takes an `ssh-ed25519 <base64>` line, or `@<path>` to read one
+from a file. The same signature checks with stock OpenSSH:
+
+```bash
+printf 'signer@ykdf %s\n' "$(cat signer.pub)" > allowed_signers
+ssh-keygen -Y verify -f allowed_signers -I signer@ykdf -n file \
+  -s CHANGELOG.md.sig < CHANGELOG.md
+```
+
+Signing is deterministic: the same key and message always produce the same
+signature. The ML-DSA signing profiles (`mldsa44`/`mldsa65`/`mldsa87`) will sign
+into a documented `ykdf-sig:v1` container in a later release.
+
 ## Choosing the smartcard transport
 
 On Linux, `--transport auto|pcsc|scdaemon` selects how the PIV factor reaches the

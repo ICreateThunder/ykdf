@@ -29,6 +29,10 @@ pub enum Commands {
     Recipe(RecipeArgs),
     /// Derive `WireGuard` keys and assemble configs (x25519)
     Wg(WgArgs),
+    /// Sign a message with a derived key (ed25519 produces an OpenSSH signature)
+    Sign(SignArgs),
+    /// Verify a detached signature against a supplied public key (no hardware)
+    Verify(VerifyArgs),
 }
 
 #[derive(clap::Args)]
@@ -398,6 +402,102 @@ pub struct PubkeyArgs {
     /// Smartcard transport for the PIV factor
     #[arg(long, default_value = "auto")]
     pub transport: TransportArg,
+}
+
+#[derive(clap::Args)]
+pub struct SignArgs {
+    /// Named recipe to sign with (fills profile/purpose/etc.; explicit flags
+    /// still override). Omit to specify everything with flags
+    #[arg(value_name = "RECIPE")]
+    pub recipe: Option<String>,
+
+    /// Key profile (required unless a recipe supplies it). Signing needs a
+    /// signature profile; currently ed25519
+    #[arg(long)]
+    pub profile: Option<ProfileArg>,
+
+    /// Derivation purpose (lowercase alphanumeric + hyphens, 1-64 chars;
+    /// required unless a recipe supplies it)
+    #[arg(long)]
+    pub purpose: Option<String>,
+
+    /// KDF pipeline override
+    #[arg(long)]
+    pub pipeline: Option<PipelineArg>,
+
+    /// Key rotation index
+    #[arg(long)]
+    pub index: Option<u32>,
+
+    /// Read IKM from file instead of `YubiKey` (testing)
+    #[arg(long, value_name = "PATH")]
+    pub ikm_file: Option<std::path::PathBuf>,
+
+    /// Use layered mode (PIV + HMAC)
+    #[arg(long)]
+    pub layered: bool,
+
+    /// Prompt for passphrase as additional entropy factor
+    #[arg(long)]
+    pub passphrase: bool,
+
+    /// Smartcard transport for the PIV factor
+    #[arg(long, default_value = "auto")]
+    pub transport: TransportArg,
+
+    /// Signature namespace / domain; the verifier must use the same value
+    #[arg(long, default_value = "file", value_name = "NAME")]
+    pub namespace: String,
+
+    /// Message-hash algorithm named in the signature
+    #[arg(long, default_value = "sha512")]
+    pub hash: HashArg,
+
+    /// Read the message to sign from PATH instead of stdin (`-` is stdin)
+    #[arg(long = "in", value_name = "PATH")]
+    pub input: Option<std::path::PathBuf>,
+
+    /// Write the signature to PATH instead of stdout
+    #[arg(long = "out", short = 'o', value_name = "PATH")]
+    pub output: Option<std::path::PathBuf>,
+}
+
+#[derive(clap::Args)]
+pub struct VerifyArgs {
+    /// Public key to verify against: an `ssh-ed25519 <base64>` line, or `@PATH`
+    /// to read one from a file
+    #[arg(long = "public-key", value_name = "KEY|@PATH")]
+    pub public_key: String,
+
+    /// Read the detached signature from PATH
+    #[arg(long, value_name = "PATH")]
+    pub signature: std::path::PathBuf,
+
+    /// Signature namespace / domain; must match how it was signed
+    #[arg(long, default_value = "file", value_name = "NAME")]
+    pub namespace: String,
+
+    /// Read the signed message from PATH instead of stdin (`-` is stdin)
+    #[arg(long = "in", value_name = "PATH")]
+    pub input: Option<std::path::PathBuf>,
+}
+
+/// Message-hash algorithm for a signature.
+#[derive(Clone, Copy, ValueEnum)]
+pub enum HashArg {
+    /// SHA-512 (the default, matching `ssh-keygen`).
+    Sha512,
+    /// SHA-256.
+    Sha256,
+}
+
+impl From<HashArg> for ykdf_core::HashAlg {
+    fn from(hash: HashArg) -> Self {
+        match hash {
+            HashArg::Sha512 => Self::Sha512,
+            HashArg::Sha256 => Self::Sha256,
+        }
+    }
 }
 
 /// Selects how the PIV factor reaches the smartcard.

@@ -78,6 +78,30 @@ pub enum Error {
         /// Description of the failure.
         detail: String,
     },
+    /// A signing operation was requested for a profile that has no signing key.
+    SigningUnsupported {
+        /// The profile that cannot sign.
+        profile: &'static str,
+    },
+    /// A detached signature could not be parsed.
+    MalformedSignature {
+        /// What was wrong with the signature.
+        detail: String,
+    },
+    /// A supplied public key could not be parsed.
+    MalformedPublicKey {
+        /// What was wrong with the public key.
+        detail: String,
+    },
+    /// The signature's namespace does not match the expected one.
+    NamespaceMismatch {
+        /// The namespace the verifier expected.
+        expected: String,
+        /// The namespace found in the signature.
+        got: String,
+    },
+    /// A signature is well-formed but not valid for this key and message.
+    SignatureVerificationFailed,
 }
 
 impl core::fmt::Display for Error {
@@ -126,6 +150,21 @@ impl core::fmt::Display for Error {
             }
             Error::PostProcessing { detail } => {
                 write!(fmt, "profile post-processing failed: {detail}")
+            }
+            Error::SigningUnsupported { profile } => {
+                write!(fmt, "the {profile} profile has no signing key")
+            }
+            Error::MalformedSignature { detail } => {
+                write!(fmt, "malformed signature: {detail}")
+            }
+            Error::MalformedPublicKey { detail } => {
+                write!(fmt, "malformed public key: {detail}")
+            }
+            Error::NamespaceMismatch { expected, got } => {
+                write!(fmt, "signature namespace is {got:?}, expected {expected:?}")
+            }
+            Error::SignatureVerificationFailed => {
+                write!(fmt, "signature verification failed")
             }
         }
     }
@@ -183,6 +222,18 @@ mod tests {
             Error::PostProcessing {
                 detail: "boom".to_string(),
             },
+            Error::SigningUnsupported { profile: "x25519" },
+            Error::MalformedSignature {
+                detail: "bad magic".to_string(),
+            },
+            Error::MalformedPublicKey {
+                detail: "not ssh-ed25519".to_string(),
+            },
+            Error::NamespaceMismatch {
+                expected: "file".to_string(),
+                got: "email".to_string(),
+            },
+            Error::SignatureVerificationFailed,
         ];
         for case in &cases {
             let message = case.to_string();

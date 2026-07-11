@@ -39,6 +39,12 @@ ykdf pubkey --profile x25519 --purpose wg-home
 # Or assemble a ready-to-use WireGuard config (the key stays derived, never stored).
 ykdf wg config --purpose wg-home --address 10.0.0.2/24 \
   --peer-pubkey <server-pubkey> --endpoint vpn.example.com:51820 --allowed-ips 0.0.0.0/0
+
+# Sign a file with a derived ed25519 key - an OpenSSH signature that
+# `ssh-keygen -Y verify` also accepts. verify needs only the public key.
+ykdf pubkey --profile ed25519 --purpose release > signer.pub
+ykdf sign --profile ed25519 --purpose release --in CHANGELOG.md --out CHANGELOG.md.sig
+ykdf verify --public-key @signer.pub --signature CHANGELOG.md.sig --in CHANGELOG.md
 ```
 
 More commands in [docs/usage.md](docs/usage.md); YubiKey setup, Linux permissions,
