@@ -3,13 +3,23 @@ use std::path::Path;
 
 use ykdf_core::Profile;
 
-use crate::cli::{SignArgs, VerifyArgs};
+use crate::cli::{HashArg, SignArgs, VerifyArgs};
 use crate::error::CliError;
 
-/// Profiles that `sign` can currently use. ed25519 produces an OpenSSH SSHSIG;
-/// the ML-DSA `ykdf-sig:v1` path is added in a follow-up.
+/// Profiles that `sign` can use: ed25519 (OpenSSH SSHSIG) and the ML-DSA
+/// profiles (`ykdf-sig:v1`).
 fn is_signing_profile(profile: Profile) -> bool {
-    matches!(profile, Profile::Ed25519)
+    matches!(
+        profile,
+        Profile::Ed25519 | Profile::MlDsa44 | Profile::MlDsa65 | Profile::MlDsa87
+    )
+}
+
+fn is_mldsa(profile: Profile) -> bool {
+    matches!(
+        profile,
+        Profile::MlDsa44 | Profile::MlDsa65 | Profile::MlDsa87
+    )
 }
 
 pub fn run_sign(args: SignArgs, config: Option<&Path>) -> Result<(), CliError> {
@@ -27,6 +37,10 @@ pub fn run_sign(args: SignArgs, config: Option<&Path>) -> Result<(), CliError> {
         return Err(CliError::SignProfileMismatch {
             profile: params.profile.as_str(),
         });
+    }
+    // ML-DSA (ykdf-sig:v1) fixes SHA-512; --hash only selects the SSHSIG digest.
+    if is_mldsa(params.profile) && matches!(args.hash, HashArg::Sha256) {
+        return Err(CliError::MlDsaHashFixed);
     }
 
     // Read the message before touching the YubiKey, so a bad path fails fast.

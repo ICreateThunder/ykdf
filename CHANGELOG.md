@@ -16,9 +16,12 @@ This project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0
   writes the signature to stdout or `--out`, and takes `--namespace` (default
   `file`) and `--hash sha512|sha256` (default `sha512`); a recipe supplies the
   derivation parameters as it does for `derive`, and the profile must be a
-  signing profile (`ed25519`). Signing is deterministic. The byte layout is
-  shared in `ykdf-core` behind a `sign` feature. ML-DSA signing (a documented
-  `ykdf-sig:v1` container) lands in a follow-up.
+  signing profile (`ed25519` or `mldsa44`/`mldsa65`/`mldsa87`). ed25519 signs
+  into an OpenSSH SSHSIG; ML-DSA signs into a `ykdf-sig:v1` container (no
+  ubiquitous ML-DSA signature standard exists), specified in
+  `docs/signatures.md`, and always uses SHA-512 (so `--hash` applies to ed25519
+  only). Signing is deterministic. The byte layout is shared in `ykdf-core`
+  behind a `sign` feature.
 - Android app: WireGuard mode. The app now has two modes (a segmented Derive /
   WireGuard control): Derive is the existing any-profile flow, and WireGuard
   renders a full `wg-quick` config from an x25519 key. The config comes from a
