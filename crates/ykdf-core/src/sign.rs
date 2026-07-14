@@ -18,6 +18,7 @@ use ml_dsa::{
     VerifyingKey,
 };
 use sha2::{Digest, Sha256, Sha512};
+use zeroize::Zeroizing;
 
 use crate::format::write_openssh_string;
 use crate::{Ed25519SeedBytes, Error, Profile, ProfileOutput, Result};
@@ -353,9 +354,11 @@ fn sign_ykdf_sig(profile: Profile, seed: &[u8], namespace: &str, message: &[u8])
 /// Deterministically sign `framed` under the ML-DSA parameter set `P` from the
 /// 32-byte seed, returning the raw signature bytes.
 fn mldsa_sign<P: MlDsaParams>(seed: &[u8], framed: &[u8]) -> Result<Vec<u8>> {
-    let seed = B32::try_from(seed).map_err(|_| Error::PostProcessing {
+    // Hold the seed copy in Zeroizing; the expanded SigningKey scrubs itself on
+    // drop (ml-dsa's `zeroize` feature), so no secret ML-DSA material lingers.
+    let seed = Zeroizing::new(B32::try_from(seed).map_err(|_| Error::PostProcessing {
         detail: "ML-DSA seed is not 32 bytes".to_owned(),
-    })?;
+    })?);
     let signing = SigningKey::<P>::from_seed(&seed);
     let signature = signing
         .expanded_key()
