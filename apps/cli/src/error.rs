@@ -62,6 +62,8 @@ pub enum CliError {
     },
     /// `sign` needs a signing profile, but the recipe/flags give another.
     SignProfileMismatch { profile: &'static str },
+    /// `--hash sha256` was given for an ML-DSA signature, which is SHA-512 only.
+    MlDsaHashFixed,
     /// Failed to read a sign/verify input (message, signature, or public key).
     InputRead(std::io::Error),
 }
@@ -83,6 +85,7 @@ impl CliError {
             | Self::WgMissingAddress
             | Self::WgMissingAllowedIps
             | Self::SignProfileMismatch { .. }
+            | Self::MlDsaHashFixed
             | Self::CloneStdinUnsupported { .. } => 2,
             _ => 1,
         }
@@ -174,8 +177,12 @@ impl std::fmt::Display for CliError {
             }
             Self::SignProfileMismatch { profile } => write!(
                 f,
-                "sign needs an ed25519 key, but this derives {profile}; \
-                 use an ed25519 recipe or pass --profile ed25519"
+                "sign needs a signing profile (ed25519 or mldsa44/65/87), but \
+                 this derives {profile}; use a signing recipe or pass --profile"
+            ),
+            Self::MlDsaHashFixed => write!(
+                f,
+                "ML-DSA signatures always use sha512; --hash sha256 applies to ed25519 only"
             ),
             Self::InputRead(e) => write!(f, "failed to read input: {e}"),
         }

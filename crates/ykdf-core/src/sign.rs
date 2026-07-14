@@ -4,8 +4,8 @@
 //!
 //! - **ed25519** produces an OpenSSH `SSHSIG` (PROTOCOL.sshsig), so
 //!   `ssh-keygen -Y verify` validates it with no YKDF on the far side.
-//! - **ML-DSA** produces a `ykdf-sig:v1` container (added in a follow-up); there
-//!   is no ubiquitous detached-ML-DSA standard to target.
+//! - **ML-DSA** produces a `ykdf-sig:v1` container (see `docs/signatures.md`);
+//!   there is no ubiquitous detached-ML-DSA standard to target.
 //!
 //! Verification is pure: it takes a supplied public key, so it needs no
 //! derivation and no hardware.
@@ -13,7 +13,12 @@
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use ed25519_dalek::{Signer, Verifier};
+use ml_dsa::{
+    B32, EncodedVerifyingKey, MlDsa44, MlDsa65, MlDsa87, MlDsaParams, Signature, SigningKey,
+    VerifyingKey,
+};
 use sha2::{Digest, Sha256, Sha512};
+use zeroize::Zeroizing;
 
 use crate::format::write_openssh_string;
 use crate::{Ed25519SeedBytes, Error, Profile, ProfileOutput, Result};
@@ -23,6 +28,13 @@ const SSHSIG_VERSION: u32 = 1;
 const SSH_ED25519: &[u8] = b"ssh-ed25519";
 const SSHSIG_BEGIN: &str = "-----BEGIN SSH SIGNATURE-----";
 const SSHSIG_END: &str = "-----END SSH SIGNATURE-----";
+
+/// Container prefix for an ML-DSA `ykdf-sig:v1` signature. Followed by
+/// `<profile>:<base64(signature)>`.
+const YKDF_SIG_PREFIX: &str = "ykdf-sig:v1:";
+/// FIPS 204 context string binding the format version into every ML-DSA
+/// signature (the native domain-separation slot).
+const YKDF_SIG_CTX: &[u8] = b"ykdf-sig:v1";
 
 /// The message-hash algorithm named inside an `SSHSIG`. `ssh-keygen` defaults to
 /// SHA-512.
@@ -79,7 +91,11 @@ pub fn sign_message(
 ) -> Result<String> {
     match output {
         ProfileOutput::Ed25519Seed(seed) => Ok(sign_sshsig(seed, namespace, hash, message)),
-        // ML-DSA (ykdf-sig:v1) lands in the follow-up PR.
+        // ML-DSA always binds SHA-512 in its own framing, so `hash` is ignored
+        // here (it only selects the SSHSIG digest for ed25519).
+        ProfileOutput::MlDsaKeypair(kp) => {
+            sign_ykdf_sig(profile, &kp.signing_key, namespace, message)
+        }
         _ => Err(Error::SigningUnsupported {
             profile: profile.as_str(),
         }),
@@ -106,11 +122,14 @@ pub fn verify_message(
     namespace: &str,
     message: &[u8],
 ) -> Result<()> {
-    if signature.trim_start().starts_with(SSHSIG_BEGIN) {
+    let trimmed = signature.trim();
+    if trimmed.starts_with(SSHSIG_BEGIN) {
         verify_sshsig(signature, public_key, namespace, message)
+    } else if let Some(body) = trimmed.strip_prefix(YKDF_SIG_PREFIX) {
+        verify_ykdf_sig(body, public_key, namespace, message)
     } else {
         Err(Error::MalformedSignature {
-            detail: "unrecognised signature format (expected an SSH SIGNATURE block)".to_owned(),
+            detail: "unrecognised signature format (expected SSHSIG or ykdf-sig:v1)".to_owned(),
         })
     }
 }
@@ -298,6 +317,101 @@ fn malformed_pubkey(detail: &str) -> Error {
     }
 }
 
+// --- ML-DSA (ykdf-sig:v1) ------------------------------------------------
+
+/// The message ML-DSA signs for a `ykdf-sig:v1` signature: the namespace, the
+/// hash label, and the SHA-512 message digest, each OpenSSH-string encoded.
+/// The format version is bound separately through the ML-DSA context string
+/// ([`YKDF_SIG_CTX`]), and the profile is fixed by the key, so neither is
+/// repeated here.
+fn ykdf_sig_signed_data(namespace: &str, message: &[u8]) -> Vec<u8> {
+    let mut framed = Vec::new();
+    write_openssh_string(&mut framed, namespace.as_bytes());
+    write_openssh_string(&mut framed, b"sha512");
+    write_openssh_string(&mut framed, &Sha512::digest(message));
+    framed
+}
+
+fn sign_ykdf_sig(profile: Profile, seed: &[u8], namespace: &str, message: &[u8]) -> Result<String> {
+    let framed = ykdf_sig_signed_data(namespace, message);
+    let signature = match profile {
+        Profile::MlDsa44 => mldsa_sign::<MlDsa44>(seed, &framed),
+        Profile::MlDsa65 => mldsa_sign::<MlDsa65>(seed, &framed),
+        Profile::MlDsa87 => mldsa_sign::<MlDsa87>(seed, &framed),
+        _ => {
+            return Err(Error::SigningUnsupported {
+                profile: profile.as_str(),
+            });
+        }
+    }?;
+    Ok(format!(
+        "{YKDF_SIG_PREFIX}{}:{}",
+        profile.as_str(),
+        BASE64.encode(&signature)
+    ))
+}
+
+/// Deterministically sign `framed` under the ML-DSA parameter set `P` from the
+/// 32-byte seed, returning the raw signature bytes.
+fn mldsa_sign<P: MlDsaParams>(seed: &[u8], framed: &[u8]) -> Result<Vec<u8>> {
+    // Hold the seed copy in Zeroizing; the expanded SigningKey scrubs itself on
+    // drop (ml-dsa's `zeroize` feature), so no secret ML-DSA material lingers.
+    let seed = Zeroizing::new(B32::try_from(seed).map_err(|_| Error::PostProcessing {
+        detail: "ML-DSA seed is not 32 bytes".to_owned(),
+    })?);
+    let signing = SigningKey::<P>::from_seed(&seed);
+    let signature = signing
+        .expanded_key()
+        .sign_deterministic(framed, YKDF_SIG_CTX)
+        .map_err(|_| Error::PostProcessing {
+            detail: "ML-DSA signing failed".to_owned(),
+        })?;
+    Ok(signature.encode().to_vec())
+}
+
+/// Verify a `ykdf-sig:v1` body (`<profile>:<base64(signature)>`) against a
+/// supplied base64 verifying key.
+fn verify_ykdf_sig(body: &str, public_key: &str, namespace: &str, message: &[u8]) -> Result<()> {
+    let (profile_label, sig_b64) = body
+        .split_once(':')
+        .ok_or_else(|| malformed_sig("ykdf-sig is missing its signature body"))?;
+    let profile = Profile::from_str_label(profile_label)
+        .ok_or_else(|| malformed_sig("ykdf-sig names an unknown profile"))?;
+    let signature = BASE64
+        .decode(sig_b64.trim())
+        .map_err(|_| malformed_sig("ykdf-sig body is not valid base64"))?;
+    let verifying_key = BASE64
+        .decode(public_key.trim())
+        .map_err(|_| malformed_pubkey("ML-DSA public key is not valid base64"))?;
+    let framed = ykdf_sig_signed_data(namespace, message);
+    match profile {
+        Profile::MlDsa44 => mldsa_verify::<MlDsa44>(&verifying_key, &signature, &framed),
+        Profile::MlDsa65 => mldsa_verify::<MlDsa65>(&verifying_key, &signature, &framed),
+        Profile::MlDsa87 => mldsa_verify::<MlDsa87>(&verifying_key, &signature, &framed),
+        _ => Err(malformed_sig("ykdf-sig profile is not an ML-DSA profile")),
+    }
+}
+
+/// Verify raw ML-DSA `signature` bytes over `framed` under parameter set `P`
+/// with the raw `verifying_key` bytes. A wrong-length key or signature (for
+/// example a mislabelled profile) fails to decode rather than verifying wrongly.
+fn mldsa_verify<P: MlDsaParams>(
+    verifying_key: &[u8],
+    signature: &[u8],
+    framed: &[u8],
+) -> Result<()> {
+    let encoded = EncodedVerifyingKey::<P>::try_from(verifying_key)
+        .map_err(|_| malformed_pubkey("ML-DSA public key has the wrong length"))?;
+    let verifying = VerifyingKey::<P>::decode(&encoded);
+    let signature = Signature::<P>::try_from(signature)
+        .map_err(|_| malformed_sig("ML-DSA signature has the wrong length"))?;
+    if verifying.verify_with_context(framed, YKDF_SIG_CTX, &signature) {
+        Ok(())
+    } else {
+        Err(Error::SignatureVerificationFailed)
+    }
+}
+
 /// A minimal reader for the OpenSSH `string` wire encoding (u32-be length +
 /// bytes), the counterpart to [`write_openssh_string`].
 struct SshReader<'a> {
@@ -405,5 +519,60 @@ mod tests {
         let mk = extract(&ikm, ctx.pipeline()).unwrap();
         let out = derive(&mk, &ctx).unwrap();
         assert!(sign_message(&out, Profile::X25519, "file", HashAlg::Sha512, b"x").is_err());
+    }
+
+    /// Derive an ML-DSA output and its base64 verifying key from the golden IKM.
+    fn mldsa_key(profile: Profile, index: u32) -> (crate::ProfileOutput, String) {
+        let ctx = Context::new(profile, "sign-test", index).unwrap();
+        let ikm = Ikm::new((0u8..32).collect()).unwrap();
+        let mk = extract(&ikm, ctx.pipeline()).unwrap();
+        let out = derive(&mk, &ctx).unwrap();
+        let pk = public_key_string(&out, profile).unwrap();
+        (out, pk)
+    }
+
+    #[test]
+    fn mldsa_round_trips_all_levels() {
+        for profile in [Profile::MlDsa44, Profile::MlDsa65, Profile::MlDsa87] {
+            let (out, pk) = mldsa_key(profile, 0);
+            let sig = sign_message(&out, profile, "file", HashAlg::Sha512, b"hello").unwrap();
+            assert!(sig.starts_with("ykdf-sig:v1:"));
+            assert!(sig.contains(profile.as_str()));
+            verify_message(&sig, &pk, "file", b"hello").unwrap();
+        }
+    }
+
+    #[test]
+    fn mldsa_is_deterministic() {
+        let (out, _) = mldsa_key(Profile::MlDsa65, 0);
+        let a = sign_message(&out, Profile::MlDsa65, "file", HashAlg::Sha512, b"msg").unwrap();
+        let b = sign_message(&out, Profile::MlDsa65, "file", HashAlg::Sha512, b"msg").unwrap();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn mldsa_tamper_and_namespace_fail() {
+        let (out, pk) = mldsa_key(Profile::MlDsa65, 0);
+        let sig = sign_message(&out, Profile::MlDsa65, "file", HashAlg::Sha512, b"hello").unwrap();
+        assert!(verify_message(&sig, &pk, "file", b"HELLO").is_err());
+        assert!(verify_message(&sig, &pk, "email", b"hello").is_err());
+    }
+
+    #[test]
+    fn mldsa_wrong_key_fails() {
+        let (out, _) = mldsa_key(Profile::MlDsa65, 0);
+        let sig = sign_message(&out, Profile::MlDsa65, "file", HashAlg::Sha512, b"hello").unwrap();
+        let (_, other_pk) = mldsa_key(Profile::MlDsa65, 1);
+        assert!(verify_message(&sig, &other_pk, "file", b"hello").is_err());
+    }
+
+    #[test]
+    fn mldsa_mislabelled_profile_fails() {
+        // A mldsa65 signature checked against a mldsa44 key must fail to decode
+        // (wrong length), never verify wrongly.
+        let (out, _) = mldsa_key(Profile::MlDsa65, 0);
+        let sig = sign_message(&out, Profile::MlDsa65, "file", HashAlg::Sha512, b"hi").unwrap();
+        let (_, pk44) = mldsa_key(Profile::MlDsa44, 0);
+        assert!(verify_message(&sig, &pk44, "file", b"hi").is_err());
     }
 }

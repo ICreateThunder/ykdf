@@ -16,6 +16,8 @@ Start at the top-level [README](../README.md) for the overview and quick start.
 
 - [SPEC.md](SPEC.md) - the byte-level v1 derivation format (canonical), with
   golden vectors in [vectors/v1.json](../vectors/v1.json).
+- [signatures.md](signatures.md) - the `ykdf sign` / `verify` formats: ed25519
+  SSHSIG and the frozen `ykdf-sig:v1` ML-DSA container.
 - [references/](../references/README.md) - independent reimplementations of the
   format (Go and C in tree) that must reproduce every golden vector.
 - [transport-notes.md](transport-notes.md) - hardware-verified desktop transport

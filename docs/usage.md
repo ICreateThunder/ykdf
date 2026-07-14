@@ -198,8 +198,21 @@ ssh-keygen -Y verify -f allowed_signers -I signer@ykdf -n file \
 ```
 
 Signing is deterministic: the same key and message always produce the same
-signature. The ML-DSA signing profiles (`mldsa44`/`mldsa65`/`mldsa87`) will sign
-into a documented `ykdf-sig:v1` container in a later release.
+signature.
+
+The ML-DSA signing profiles (`mldsa44`/`mldsa65`/`mldsa87`) sign into a
+`ykdf-sig:v1` container rather than an SSHSIG, because no ubiquitous ML-DSA
+signature standard exists to target. The commands are identical, and the public
+key is the base64 string `ykdf pubkey` prints:
+
+```bash
+ykdf pubkey --profile mldsa65 --purpose release > signer-mldsa.pub
+ykdf sign --profile mldsa65 --purpose release --in CHANGELOG.md --out CHANGELOG.md.sig
+ykdf verify --public-key @signer-mldsa.pub --signature CHANGELOG.md.sig --in CHANGELOG.md
+```
+
+ML-DSA signing always uses SHA-512, so `--hash` applies to ed25519 only. The
+`ykdf-sig:v1` format is specified in [signatures.md](signatures.md).
 
 ## Choosing the smartcard transport
 
